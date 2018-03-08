@@ -18,6 +18,10 @@ parameters:
     default: ''
     description: IP address/subnet on the storage network
     type: string
+  StorageMgmtIpSubnet:
+    default: ''
+    description: IP address/subnet on the storage_mgmt network
+    type: string
   TenantIpSubnet:
     default: ''
     description: IP address/subnet on the tenant network
@@ -47,6 +51,10 @@ parameters:
   StorageNetworkVlanID:
     default: 30
     description: Vlan ID for the storage network traffic.
+    type: number
+  StorageMgmtNetworkVlanID:
+    default: 40
+    description: Vlan ID for the storage mgmt network traffic.
     type: number
   TenantNetworkVlanID:
     default: 50
