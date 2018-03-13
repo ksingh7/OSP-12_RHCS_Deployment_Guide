@@ -1,0 +1,285 @@
+heat_template_version: pike
+
+description: >
+  OpenStack containerized HAproxy service for pacemaker
+
+parameters:
+  DockerHAProxyImage:
+    description: image
+    type: string
+  DockerHAProxyConfigImage:
+    description: The container image to use for the haproxy config_volume
+    type: string
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  DeployedSSLCertificatePath:
+    default: '/etc/pki/tls/private/overcloud_endpoint.pem'
+    description: >
+        The filepath of the certificate as it will be stored in the controller.
+    type: string
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  InternalTLSCAFile:
+    default: '/etc/ipa/ca.crt'
+    type: string
+    description: Specifies the default CA cert to use if TLS is used for
+                 services in the internal network.
+  InternalTLSCRLPEMFile:
+    default: '/etc/pki/CA/crl/overcloud-crl.pem'
+    type: string
+    description: Specifies the default CRL PEM file to use for revocation if
+                 TLS is used for services in the internal network.
+  HAProxyInternalTLSCertsDirectory:
+    default: '/etc/pki/tls/certs/haproxy'
+    type: string
+  HAProxyInternalTLSKeysDirectory:
+    default: '/etc/pki/tls/private/haproxy'
+    type: string
+
+resources:
+
+  HAProxyBase:
+    type: ../../../puppet/services/pacemaker/haproxy.yaml
+    properties:
+      EndpointMap: {get_param: EndpointMap}
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+outputs:
+  role_data:
+    description: Role data for the HAproxy role.
+    value:
+      service_name: {get_attr: [HAProxyBase, role_data, service_name]}
+      config_settings:
+        map_merge:
+          - get_attr: [HAProxyBase, role_data, config_settings]
+          - haproxy_docker: true
+            tripleo::profile::pacemaker::haproxy_bundle::haproxy_docker_image: &haproxy_image {get_param: DockerHAProxyImage}
+            # the list of directories that contain the certs to bind mount in the countainer
+            # bind-mounting the directories rather than all the cert, key and pem files ensures
+            # that docker won't create directories on the host when then pem files do not exist
+            tripleo::profile::pacemaker::haproxy_bundle::tls_mapping: &tls_mapping
+              - get_param: InternalTLSCAFile
+              - get_param: HAProxyInternalTLSKeysDirectory
+              - get_param: HAProxyInternalTLSCertsDirectory
+              - get_param: DeployedSSLCertificatePath
+            tripleo::profile::pacemaker::haproxy_bundle::internal_certs_directory: {get_param: HAProxyInternalTLSCertsDirectory}
+            tripleo::profile::pacemaker::haproxy_bundle::internal_keys_directory: {get_param: HAProxyInternalTLSKeysDirectory}
+            # disable the use CRL file until we can restart the container when the file expires
+            tripleo::haproxy::crl_file: null
+            tripleo::profile::pacemaker::haproxy_bundle::haproxy_docker_image: &haproxy_image_pcmklatest
+              list_join:
+                - ':'
+                - - yaql:
+                      data: {get_param: DockerHAProxyImage}
+                      expression: $.data.rightSplit(separator => ":", maxSplits => 1)[0]
+                  - 'pcmklatest'
+      logging_source: {get_attr: [HAProxyBase, role_data, logging_source]}
+      logging_groups: {get_attr: [HAProxyBase, role_data, logging_groups]}
+      step_config: ""
+      service_config_settings: {get_attr: [HAProxyBase, role_data, service_config_settings]}
+      # BEGIN DOCKER SETTINGS
+      puppet_config:
+        config_volume: haproxy
+        puppet_tags: haproxy_config
+        step_config:
+          list_join:
+            - "\n"
+            - - "exec {'wait-for-settle': command => '/bin/true' }"
+              - "class tripleo::firewall(){}; define tripleo::firewall::rule( $port = undef, $dport = undef, $sport = undef, $proto = undef, $action = undef, $state = undef, $source = undef, $iniface = undef, $chain = undef, $destination = undef, $extras = undef){}"
+              - "['pcmk_bundle', 'pcmk_resource', 'pcmk_property', 'pcmk_constraint', 'pcmk_resource_default'].each |String $val| { noop_resource($val) }"
+              - 'include ::tripleo::profile::pacemaker::haproxy_bundle'
+        config_image: {get_param: DockerHAProxyConfigImage}
+        volumes: &deployed_cert_mount
+          yaql:
+            expression: $.data.select($+":"+$+":ro")
+            data: *tls_mapping
+      kolla_config:
+        /var/lib/kolla/config_files/haproxy.json:
+          command: /usr/sbin/haproxy-systemd-wrapper -f /etc/haproxy/haproxy.cfg
+          config_files:
+            - source: "/var/lib/kolla/config_files/src/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+              optional: true
+            - source: "/var/lib/kolla/config_files/src-tls/*"
+              dest: "/"
+              merge: true
+              optional: true
+              preserve_properties: true
+          permissions:
+            - path:
+                list_join:
+                - ''
+                - - {get_param: HAProxyInternalTLSCertsDirectory}
+                  - '/*'
+              owner: haproxy:haproxy
+              perm: '0600'
+              optional: true
+            - path:
+                list_join:
+                - ''
+                - - {get_param: HAProxyInternalTLSKeysDirectory}
+                  - '/*'
+              owner: haproxy:haproxy
+              perm: '0600'
+              optional: true
+      docker_config:
+        step_1:
+          haproxy_image_tag:
+            start_order: 1
+            detach: false
+            net: host
+            user: root
+            command:
+              - '/bin/bash'
+              - '-c'
+              - str_replace:
+                  template:
+                    "/usr/bin/docker tag 'HAPROXY_IMAGE' 'HAPROXY_IMAGE_PCMKLATEST'"
+                  params:
+                    HAPROXY_IMAGE: {get_param: DockerHAProxyImage}
+                    HAPROXY_IMAGE_PCMKLATEST: *haproxy_image_pcmklatest
+            image: {get_param: DockerHAProxyImage}
+            volumes:
+              - /etc/hosts:/etc/hosts:ro
+              - /etc/localtime:/etc/localtime:ro
+              - /dev/shm:/dev/shm:rw
+              - /etc/sysconfig/docker:/etc/sysconfig/docker:ro
+              - /usr/bin:/usr/bin:ro
+              - /var/run/docker.sock:/var/run/docker.sock:rw
+            image: {get_param: DockerHAProxyImage}
+        step_2:
+          haproxy_init_bundle:
+            start_order: 3
+            detach: false
+            net: host
+            user: root
+            privileged: true
+            command:
+              - '/bin/bash'
+              - '-c'
+              - str_replace:
+                  template:
+                    list_join:
+                      - '; '
+                      - - "cp -a /tmp/puppet-etc/* /etc/puppet; echo '{\"step\": 2}' > /etc/puppet/hieradata/docker.json"
+                        - "FACTER_uuid=docker puppet apply --tags file,file_line,concat,augeas,TAGS -v -e 'CONFIG'"
+                  params:
+                    TAGS: 'tripleo::firewall::rule,pacemaker::resource::bundle,pacemaker::property,pacemaker::resource::ip,pacemaker::resource::ocf,pacemaker::constraint::order,pacemaker::constraint::colocation'
+                    CONFIG:
+                      list_join:
+                        - ';'
+                        - - 'include ::tripleo::profile::base::pacemaker'
+                          - 'include ::tripleo::profile::pacemaker::haproxy_bundle'
+            image: {get_param: DockerHAProxyImage}
+            volumes:
+              list_concat:
+                - *deployed_cert_mount
+                -
+                  # puppet saves iptables rules in /etc/sysconfig
+                  - /etc/sysconfig:/etc/sysconfig:rw
+                  # saving rules require accessing /usr/libexec/iptables/iptables.init, just bind-mount
+                  # the necessary bit and prevent systemd to try to reload the service in the container
+                  - /usr/libexec/iptables:/usr/libexec/iptables:ro
+                  - /usr/libexec/initscripts/legacy-actions:/usr/libexec/initscripts/legacy-actions:ro
+                  - /etc/hosts:/etc/hosts:ro
+                  - /etc/localtime:/etc/localtime:ro
+                  - /etc/puppet:/tmp/puppet-etc:ro
+                  - /usr/share/openstack-puppet/modules:/usr/share/openstack-puppet/modules:ro
+                  - /etc/corosync/corosync.conf:/etc/corosync/corosync.conf:ro
+                  - /dev/shm:/dev/shm:rw
+      metadata_settings:
+        get_attr: [HAProxyBase, role_data, metadata_settings]
+      upgrade_tasks:
+        - name: get bootstrap nodeid
+          tags: common
+          command: hiera -c /etc/puppet/hiera.yaml bootstrap_nodeid
+          register: bootstrap_node
+        - name: set is_bootstrap_node fact
+          tags: common
+          set_fact: is_bootstrap_node={{bootstrap_node.stdout|lower == ansible_hostname|lower}}
+        - name: Check cluster resource status
+          tags: step2
+          pacemaker_resource:
+            resource: {get_attr: [HAProxyBase, role_data, service_name]}
+            state: started
+            check_mode: true
+          ignore_errors: true
+          register: haproxy_res
+        - name: Disable the haproxy cluster resource.
+          tags: step2
+          pacemaker_resource:
+            resource: {get_attr: [HAProxyBase, role_data, service_name]}
+            state: disable
+            wait_for_resource: true
+          register: output
+          retries: 5
+          until: output.rc == 0
+          when: is_bootstrap_node and haproxy_res|succeeded
+        - name: Delete the stopped haproxy cluster resource.
+          tags: step2
+          pacemaker_resource:
+            resource: {get_attr: [HAProxyBase, role_data, service_name]}
+            state: delete
+            wait_for_resource: true
+          register: output
+          retries: 5
+          until: output.rc == 0
+          when: is_bootstrap_node and haproxy_res|succeeded
+      update_tasks:
+        - name: Get docker Haproxy image
+          set_fact:
+            docker_image: {get_param: DockerHAProxyImage}
+            docker_image_latest: *haproxy_image_pcmklatest
+          when: step == '2'
+        - name: Get previous Haproxy image id
+          shell: "docker images | awk '/haproxy.* pcmklatest/{print $3}'"
+          register: haproxy_image_id
+        - block:
+            - name: Get a list of container using Haproxy image
+              shell: "docker ps -q -f 'ancestor={{haproxy_image_id.stdout}}'"
+              register: haproxy_containers_to_destroy
+            # It will be recreated with the delpoy step.
+            - name: Remove any container using the same Haproxy image
+              shell: "docker rm -fv {{item}}"
+              with_items: "{{ haproxy_containers_to_destroy.stdout_lines }}"
+            - name: Remove previous Haproxy images
+              shell: "docker rmi -f {{haproxy_image_id.stdout}}"
+          when:
+            - step == '2'
+            - haproxy_image_id.stdout != ''
+        - name: Pull latest Haproxy images
+          command: "docker pull {{docker_image}}"
+          when: step == "2"
+        - name: Retag pcmklatest to latest Haproxy image
+          shell: "docker tag {{docker_image}} {{docker_image_latest}}"
+          when: step == "2"
+        # Got to check that pacemaker_is_active is working fine with bundle.
+        # TODO: pacemaker_is_active resource doesn't support bundle.

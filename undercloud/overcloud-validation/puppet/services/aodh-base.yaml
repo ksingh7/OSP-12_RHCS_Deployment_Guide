@@ -1,0 +1,133 @@
+heat_template_version: pike
+
+description: >
+  OpenStack Aodh service configured with Puppet
+
+parameters:
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  AodhPassword:
+    description: The password for the aodh services.
+    type: string
+    hidden: true
+  RedisPassword:
+    description: The password for the redis service account.
+    type: string
+    hidden: true
+  RabbitPassword:
+    description: The password for RabbitMQ
+    type: string
+    hidden: true
+  RabbitUserName:
+    default: guest
+    description: The username for RabbitMQ
+    type: string
+  RabbitClientUseSSL:
+    default: false
+    description: >
+        Rabbit client subscriber parameter to specify
+        an SSL connection to the RabbitMQ host.
+    type: string
+  RabbitClientPort:
+    default: 5672
+    description: Set rabbit subscriber port, change this if using SSL
+    type: number
+  Debug:
+    default: ''
+    description: Set to True to enable debugging on all services.
+    type: string
+  AodhDebug:
+    default: ''
+    description: Set to True to enable debugging Aodh services.
+    type: string
+  KeystoneRegion:
+    type: string
+    default: 'regionOne'
+    description: Keystone region for endpoint
+  NotificationDriver:
+    type: string
+    default: 'messagingv2'
+    description: Driver or drivers to handle sending notifications.
+    constraints:
+      - allowed_values: [ 'messagingv2', 'noop' ]
+
+conditions:
+  service_debug_unset: {equals : [{get_param: AodhDebug}, '']}
+
+outputs:
+  role_data:
+    description: Role data for the Aodh role.
+    value:
+      service_name: aodh_base
+      config_settings:
+        aodh_redis_password: {get_param: RedisPassword}
+        aodh::db::database_connection:
+          make_url:
+            scheme: {get_param: [EndpointMap, MysqlInternal, protocol]}
+            username: aodh
+            password: {get_param: AodhPassword}
+            host: {get_param: [EndpointMap, MysqlInternal, host]}
+            path: /aodh
+            query:
+              read_default_file: /etc/my.cnf.d/tripleo.cnf
+              read_default_group: tripleo
+        aodh::debug:
+          if:
+          - service_debug_unset
+          - {get_param: Debug }
+          - {get_param: AodhDebug }
+        aodh::auth::auth_url: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix] }
+        aodh::notification_driver: {get_param: NotificationDriver}
+        aodh::rabbit_userid: {get_param: RabbitUserName}
+        aodh::rabbit_password: {get_param: RabbitPassword}
+        aodh::rabbit_use_ssl: {get_param: RabbitClientUseSSL}
+        aodh::rabbit_port: {get_param: RabbitClientPort}
+        aodh::keystone::authtoken::project_name: 'service'
+        aodh::keystone::authtoken::user_domain_name: 'Default'
+        aodh::keystone::authtoken::project_domain_name: 'Default'
+        aodh::keystone::authtoken::password: {get_param: AodhPassword}
+        aodh::keystone::authtoken::auth_uri: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix] }
+        aodh::keystone::authtoken::auth_url: { get_param: [EndpointMap, KeystoneInternal, uri_no_suffix] }
+        aodh::auth::auth_password: {get_param: AodhPassword}
+        aodh::auth::auth_region: {get_param: KeystoneRegion}
+        aodh::auth::auth_tenant_name: 'service'
+      service_config_settings:
+        keystone:
+          aodh::keystone::auth::public_url: {get_param: [EndpointMap, AodhPublic, uri]}
+          aodh::keystone::auth::internal_url: {get_param: [EndpointMap, AodhInternal, uri]}
+          aodh::keystone::auth::admin_url: {get_param: [EndpointMap, AodhAdmin, uri]}
+          aodh::keystone::auth::password: {get_param: AodhPassword}
+          aodh::keystone::auth::region: {get_param: KeystoneRegion}
+          aodh::keystone::auth::tenant: 'service'
+        mysql:
+          aodh::db::mysql::user: aodh
+          aodh::db::mysql::password: {get_param: AodhPassword}
+          aodh::db::mysql::host: {get_param: [EndpointMap, MysqlInternal, host_nobrackets]}
+          aodh::db::mysql::dbname: aodh
+          aodh::db::mysql::allowed_hosts:
+            - '%'
+            - "%{hiera('mysql_bind_host')}"

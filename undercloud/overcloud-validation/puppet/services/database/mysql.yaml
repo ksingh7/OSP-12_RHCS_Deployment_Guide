@@ -1,0 +1,184 @@
+heat_template_version: pike
+
+description: >
+  MySQL service deployment using puppet
+
+parameters:
+  #Parameters not used EndpointMap
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  MysqlMaxConnections:
+    description: Configures MySQL max_connections config setting
+    type: number
+    default: 4096
+  MysqlIncreaseFileLimit:
+    description: Flag to increase MySQL open-files-limit to 16384
+    type: boolean
+    default: true
+  MysqlRootPassword:
+    type: string
+    hidden: true
+    default: ''
+  MysqlClustercheckPassword:
+    type: string
+    hidden: true
+  EnableGalera:
+    default: true
+    description: Whether to use Galera instead of regular MariaDB.
+    type: boolean
+  NovaPassword:
+    description: The password for the nova service and db account
+    type: string
+    hidden: true
+  EnableInternalTLS:
+    type: boolean
+    default: false
+  MysqlIPv6:
+    default: false
+    description: Enable IPv6 in MySQL
+    type: boolean
+
+
+conditions:
+
+  internal_tls_enabled: {equals: [{get_param: EnableInternalTLS}, true]}
+
+outputs:
+  role_data:
+    description: Service MySQL using composable services.
+    value:
+      service_name: mysql
+      config_settings:
+        map_merge:
+          -
+            # The Galera package should work in cluster and
+            # non-cluster modes based on the config file.
+            # We set the package name here explicitly so
+            # that it matches what we pre-install
+            # in tripleo-puppet-elements.
+            mysql::server::package_name: 'mariadb-galera-server'
+            mysql::server::manage_config_file: true
+            mysql_ipv6: {get_param: MysqlIPv6}
+            tripleo.mysql.firewall_rules:
+              '104 mysql galera':
+                dport:
+                  - 873
+                  - 3306
+                  - 4444
+                  - 4567
+                  - 4568
+                  - 9200
+            mysql_max_connections: {get_param: MysqlMaxConnections}
+            mysql::server::root_password:
+              yaql:
+                expression: $.data.passwords.where($ != '').first()
+                data:
+                  passwords:
+                    - {get_param: MysqlRootPassword}
+                    - {get_param: [DefaultPasswords, mysql_root_password]}
+            mysql_clustercheck_password: {get_param: MysqlClustercheckPassword}
+            enable_galera: {get_param: EnableGalera}
+            # NOTE: bind IP is found in Heat replacing the network name with the
+            # local node IP for the given network; replacement examples
+            # (eg. for internal_api):
+            # internal_api -> IP
+            # internal_api_uri -> [IP]
+            # internal_api_subnet - > IP/CIDR
+            mysql_bind_host: {get_param: [ServiceNetMap, MysqlNetwork]}
+            tripleo::profile::base::database::mysql::bind_address:
+              str_replace:
+                template:
+                  "%{hiera('fqdn_$NETWORK')}"
+                params:
+                  $NETWORK: {get_param: [ServiceNetMap, MysqlNetwork]}
+            tripleo::profile::base::database::mysql::client_bind_address:
+              {get_param: [ServiceNetMap, MysqlNetwork]}
+            tripleo::profile::base::database::mysql::generate_dropin_file_limit:
+              {get_param: MysqlIncreaseFileLimit}
+          - if:
+            - internal_tls_enabled
+            -
+              generate_service_certificates: true
+              tripleo::profile::base::database::mysql::certificate_specs:
+                service_certificate: '/etc/pki/tls/certs/mysql.crt'
+                service_key: '/etc/pki/tls/private/mysql.key'
+                hostname:
+                  str_replace:
+                    template: "%{hiera('cloud_name_NETWORK')}"
+                    params:
+                      NETWORK: {get_param: [ServiceNetMap, MysqlNetwork]}
+                dnsnames:
+                  - str_replace:
+                      template: "%{hiera('cloud_name_NETWORK')}"
+                      params:
+                        NETWORK: {get_param: [ServiceNetMap, MysqlNetwork]}
+                  - str_replace:
+                      template:
+                        "%{hiera('fqdn_$NETWORK')}"
+                      params:
+                        $NETWORK: {get_param: [ServiceNetMap, MysqlNetwork]}
+                principal:
+                  str_replace:
+                    template: "mysql/%{hiera('cloud_name_NETWORK')}"
+                    params:
+                      NETWORK: {get_param: [ServiceNetMap, MysqlNetwork]}
+            - {}
+      step_config: |
+        include ::tripleo::profile::base::database::mysql
+      metadata_settings:
+        if:
+          - internal_tls_enabled
+          -
+            - service: mysql
+              network: {get_param: [ServiceNetMap, MysqlNetwork]}
+              type: vip
+            - service: mysql
+              network: {get_param: [ServiceNetMap, MysqlNetwork]}
+              type: node
+          - null
+      upgrade_tasks:
+        - name: Check for galera root password
+          tags: step0
+          file: path=/root/.my.cnf state=file
+        - name: Stop service
+          tags: step2
+          service: name=mariadb state=stopped
+        - name: Start service
+          tags: step4
+          service: name=mariadb state=started
+        - name: Setup cell_v2 (create cell0 database)
+          tags: step4
+          mysql_db:
+            name: nova_cell0
+            state: present
+        - name: Setup cell_v2 (grant access to the nova DB user)
+          tags: step4
+          mysql_user:
+            str_replace:
+              template: "name=nova password=PASSWORD host=\"%\" priv=\"nova.*:ALL/nova_cell0.*:ALL,GRANT\" state=present"
+              params:
+                PASSWORD: {get_param: NovaPassword}

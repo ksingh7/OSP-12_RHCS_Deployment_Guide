@@ -1,0 +1,280 @@
+heat_template_version: pike
+
+description: >
+  OpenStack containerized Cinder Volume service
+
+parameters:
+  DockerCinderVolumeImage:
+    description: image
+    type: string
+  DockerCinderConfigImage:
+    description: The container image to use for the cinder config_volume
+    type: string
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  # custom parameters for the Cinder volume role
+  CinderEnableIscsiBackend:
+    default: true
+    description: Whether to enable or not the Iscsi backend for Cinder
+    type: boolean
+  CinderLVMLoopDeviceSize:
+    default: 10280
+    description: The size of the loopback file used by the cinder LVM driver.
+    type: number
+
+resources:
+
+  MySQLClient:
+    type: ../../../puppet/services/database/mysql-client.yaml
+
+  CinderBase:
+    type: ../../../puppet/services/cinder-volume.yaml
+    properties:
+      EndpointMap: {get_param: EndpointMap}
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+outputs:
+  role_data:
+    description: Role data for the Cinder Volume role.
+    value:
+      service_name: {get_attr: [CinderBase, role_data, service_name]}
+      config_settings:
+        map_merge:
+          - get_attr: [CinderBase, role_data, config_settings]
+          - tripleo::profile::base::lvm::enable_udev: false
+            tripleo::profile::pacemaker::cinder::volume_bundle::cinder_volume_docker_image: &cinder_volume_image_pcmklatest
+              list_join:
+                - ':'
+                - - yaql:
+                      data: {get_param: DockerCinderVolumeImage}
+                      expression: $.data.rightSplit(separator => ":", maxSplits => 1)[0]
+                  - 'pcmklatest'
+            cinder::volume::manage_service: false
+            cinder::volume::enabled: false
+            cinder::host: hostgroup
+      logging_source: {get_attr: [CinderBase, role_data, logging_source]}
+      logging_groups: {get_attr: [CinderBase, role_data, logging_groups]}
+      step_config: &step_config
+        list_join:
+          - "\n"
+          - - "include ::tripleo::profile::base::lvm"
+            - get_attr: [CinderBase, role_data, step_config]
+            - get_attr: [MySQLClient, role_data, step_config]
+      service_config_settings: {get_attr: [CinderBase, role_data, service_config_settings]}
+      # BEGIN DOCKER SETTINGS
+      puppet_config:
+        config_volume: cinder
+        puppet_tags: cinder_config,file,concat,file_line
+        step_config: *step_config
+        config_image: {get_param: DockerCinderConfigImage}
+      kolla_config:
+        /var/lib/kolla/config_files/cinder_volume.json:
+          command: /usr/bin/cinder-volume --config-file /usr/share/cinder/cinder-dist.conf --config-file /etc/cinder/cinder.conf
+          config_files:
+            - source: "/var/lib/kolla/config_files/src/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+            - source: "/var/lib/kolla/config_files/src-ceph/"
+              dest: "/etc/ceph/"
+              merge: true
+              preserve_properties: true
+            - source: "/var/lib/kolla/config_files/src-iscsid/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+          permissions:
+            - path: /var/log/cinder
+              owner: cinder:cinder
+              recurse: true
+      docker_config:
+        step_1:
+          cinder_volume_image_tag:
+            start_order: 1
+            detach: false
+            net: host
+            user: root
+            command:
+              - '/bin/bash'
+              - '-c'
+              - str_replace:
+                  template:
+                    "/usr/bin/docker tag 'CINDERVOLUME_IMAGE' 'CINDERVOLUME_IMAGE_PCMKLATEST'"
+                  params:
+                    CINDERVOLUME_IMAGE: {get_param: DockerCinderVolumeImage}
+                    CINDERVOLUME_IMAGE_PCMKLATEST: *cinder_volume_image_pcmklatest
+            image: {get_param: DockerCinderVolumeImage}
+            volumes:
+              - /etc/hosts:/etc/hosts:ro
+              - /etc/localtime:/etc/localtime:ro
+              - /dev/shm:/dev/shm:rw
+              - /etc/sysconfig/docker:/etc/sysconfig/docker:ro
+              - /usr/bin:/usr/bin:ro
+              - /var/run/docker.sock:/var/run/docker.sock:rw
+        step_3:
+          cinder_volume_init_logs:
+            start_order: 0
+            image: {get_param: DockerCinderVolumeImage}
+            privileged: false
+            user: root
+            volumes:
+              - /var/log/containers/cinder:/var/log/cinder
+            command: ['/bin/bash', '-c', 'chown -R cinder:cinder /var/log/cinder']
+        step_5:
+          cinder_volume_init_bundle:
+            start_order: 0
+            detach: false
+            net: host
+            user: root
+            command:
+              - '/bin/bash'
+              - '-c'
+              - str_replace:
+                  template:
+                    list_join:
+                      - '; '
+                      - - "cp -a /tmp/puppet-etc/* /etc/puppet; echo '{\"step\": 5}' > /etc/puppet/hieradata/docker.json"
+                        - "FACTER_uuid=docker puppet apply --tags file_line,concat,augeas,TAGS --debug -v -e 'CONFIG'"
+                  params:
+                    TAGS: 'pacemaker::resource::bundle,pacemaker::property,pacemaker::constraint::location'
+                    CONFIG: 'include ::tripleo::profile::base::pacemaker;include ::tripleo::profile::pacemaker::cinder::volume_bundle'
+            image: {get_param: DockerCinderVolumeImage}
+            volumes:
+              - /etc/hosts:/etc/hosts:ro
+              - /etc/localtime:/etc/localtime:ro
+              - /etc/puppet:/tmp/puppet-etc:ro
+              - /usr/share/openstack-puppet/modules:/usr/share/openstack-puppet/modules:ro
+              - /etc/corosync/corosync.conf:/etc/corosync/corosync.conf:ro
+              - /dev/shm:/dev/shm:rw
+      host_prep_tasks:
+        - name: create persistent directories
+          file:
+            path: "{{ item }}"
+            state: directory
+          with_items:
+            - /var/log/containers/cinder
+            - /var/lib/cinder
+        - name: ensure ceph configurations exist
+          file:
+            path: /etc/ceph
+            state: directory
+        - name: cinder_enable_iscsi_backend fact
+          set_fact:
+            cinder_enable_iscsi_backend: {get_param: CinderEnableIscsiBackend}
+        - name: cinder create LVM volume group dd
+          command:
+            list_join:
+            - ''
+            - - 'dd if=/dev/zero of=/var/lib/cinder/cinder-volumes bs=1 count=0 seek='
+              - str_replace:
+                  template: VALUE
+                  params:
+                    VALUE: {get_param: CinderLVMLoopDeviceSize}
+              - 'M'
+          args:
+            creates: /var/lib/cinder/cinder-volumes
+          when: cinder_enable_iscsi_backend
+        - name: cinder create LVM volume group
+          shell: |
+            if ! losetup /dev/loop2; then
+              losetup /dev/loop2 /var/lib/cinder/cinder-volumes
+            fi
+            if ! pvdisplay | grep cinder-volumes; then
+              pvcreate /dev/loop2
+            fi
+            if ! vgdisplay | grep cinder-volumes; then
+              vgcreate cinder-volumes /dev/loop2
+            fi
+          args:
+            executable: /bin/bash
+            creates: /dev/loop2
+          when: cinder_enable_iscsi_backend
+      upgrade_tasks:
+        - name: get bootstrap nodeid
+          tags: common
+          command: hiera -c /etc/puppet/hiera.yaml bootstrap_nodeid
+          register: bootstrap_node
+        - name: set is_bootstrap_node fact
+          tags: common
+          set_fact: is_bootstrap_node={{bootstrap_node.stdout|lower == ansible_hostname|lower}}
+        - name: Disable the openstack-cinder-volume cluster resource
+          tags: step2
+          pacemaker_resource:
+            resource: openstack-cinder-volume
+            state: disable
+            wait_for_resource: true
+          register: output
+          retries: 5
+          until: output.rc == 0
+          when: is_bootstrap_node
+        - name: Delete the stopped openstack-cinder-volume cluster resource.
+          tags: step2
+          pacemaker_resource:
+            resource: openstack-cinder-volume
+            state: delete
+            wait_for_resource: true
+          register: output
+          retries: 5
+          until: output.rc == 0
+          when: is_bootstrap_node
+        - name: Disable cinder_volume service from boot
+          tags: step2
+          service: name=openstack-cinder-volume enabled=no
+      update_tasks:
+        - name: Get docker Cinder-Volume image
+          set_fact:
+            docker_image: {get_param: DockerCinderVolumeImage}
+            docker_image_latest: *cinder_volume_image_pcmklatest
+          when: step == '2'
+        - name: Get previous Cinder-Volume image id
+          shell: "docker images | awk '/cinder-volume.* pcmklatest/{print $3}'"
+          register: cinder_volume_image_id
+        - block:
+            - name: Get a list of container using Cinder-Volume image
+              shell: "docker ps -q -f 'ancestor={{cinder_volume_image_id.stdout}}'"
+              register: cinder_volume_containers_to_destroy
+            # It will be recreated with the delpoy step.
+            - name: Remove any container using the same Cinder-Volume image
+              shell: "docker rm -fv {{item}}"
+              with_items: "{{ cinder_volume_containers_to_destroy.stdout_lines }}"
+            - name: Remove previous Cinder-Volume images
+              shell: "docker rmi -f {{cinder_volume_image_id.stdout}}"
+          when:
+            - step == '2'
+            - cinder_volume_image_id.stdout != ''
+        - name: Pull latest Cinder-Volume images
+          command: "docker pull {{docker_image}}"
+          when: step == "2"
+        - name: Retag pcmklatest to latest Cinder-Volume image
+          shell: "docker tag {{docker_image}} {{docker_image_latest}}"
+          when: step == "2"
+        # Got to check that pacemaker_is_active is working fine with bundle.
+        # TODO: pacemaker_is_active resource doesn't support bundle.

@@ -1,0 +1,33 @@
+{%- set primary_role = [roles[0]] -%}
+{%- for role in roles -%}
+  {%- if 'primary' in role.tags and 'controller' in role.tags -%}
+    {%- set _ = primary_role.pop() -%}
+    {%- set _ = primary_role.append(role) -%}
+  {%- endif -%}
+{%- endfor -%}
+{%- set primary_role_name = primary_role[0].name -%}
+# Enable the creation of Neutron networks for isolated Overcloud
+# traffic and configure each role to assign ports (related
+# to that role) on these networks.
+# primary role is: {{primary_role_name}}
+resource_registry:
+  # networks as defined in network_data.yaml
+  {%- for network in networks if network.enabled|default(true) %}
+  OS::TripleO::Network::{{network.name}}: ../network/{{network.name_lower|default(network.name.lower())}}.yaml
+  {%- endfor %}
+
+  # Port assignments for the VIPs
+  {%- for network in networks if network.vip and network.enabled|default(true) %}
+  OS::TripleO::Network::Ports::{{network.name}}VipPort: ../network/ports/{{network.name_lower|default(network.name.lower())}}.yaml
+  {%- endfor %}
+  OS::TripleO::Network::Ports::RedisVipPort: ../network/ports/vip.yaml
+
+  # Port assignments by role, edit role definition to assign networks to roles.
+{%- for role in roles %}
+  # Port assignments for the {{role.name}}
+  {%- for network in networks %}
+    {%- if network.name in role.networks|default([]) and network.enabled|default(true) %}
+  OS::TripleO::{{role.name}}::Ports::{{network.name}}Port: ../network/ports/{{network.name_lower|default(network.name.lower())}}.yaml
+    {%- endif %}
+  {%- endfor %}
+{% endfor %}

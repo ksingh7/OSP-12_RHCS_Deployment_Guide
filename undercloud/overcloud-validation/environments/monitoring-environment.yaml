@@ -1,0 +1,16 @@
+## A Heat environment file which can be used to set up monitoring agents
+
+resource_registry:
+  OS::TripleO::Services::SensuClient: ../docker/services/sensu-client.yaml
+
+#parameter_defaults:
+#  MonitoringRabbitHost: 10.10.10.10
+#  MonitoringRabbitPort: 5672
+#  MonitoringRabbitUserName: sensu
+#  MonitoringRabbitPassword: sensu
+#  MonitoringRabbitUseSSL: false
+#  MonitoringRabbitVhost: "/sensu"
+#  SensuClientCustomConfig:
+#    api:
+#      warning: 10
+#      critical: 20

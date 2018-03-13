@@ -1,0 +1,109 @@
+heat_template_version: pike
+
+description: >
+  OpenStack containerized Memcached services
+
+parameters:
+  DockerMemcachedImage:
+    description: image
+    type: string
+  DockerMemcachedConfigImage:
+    description: The container image to use for the memcached config_volume
+    type: string
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+
+resources:
+
+  ContainersCommon:
+    type: ./containers-common.yaml
+
+  MemcachedBase:
+    type: ../../puppet/services/memcached.yaml
+    properties:
+      EndpointMap: {get_param: EndpointMap}
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+outputs:
+  role_data:
+    description: Role data for the Memcached API role.
+    value:
+      service_name: {get_attr: [MemcachedBase, role_data, service_name]}
+      config_settings: {get_attr: [MemcachedBase, role_data, config_settings]}
+      logging_source: {get_attr: [MemcachedBase, role_data, logging_source]}
+      logging_groups: {get_attr: [MemcachedBase, role_data, logging_groups]}
+      step_config: &step_config
+        get_attr: [MemcachedBase, role_data, step_config]
+      service_config_settings: {get_attr: [MemcachedBase, role_data, service_config_settings]}
+      # BEGIN DOCKER SETTINGS
+      puppet_config:
+        config_volume: 'memcached'
+        puppet_tags: 'file'
+        step_config: *step_config
+        config_image: {get_param: DockerMemcachedConfigImage}
+      kolla_config: {}
+      docker_config:
+        step_1:
+          memcached_init_logs:
+            start_order: 0
+            detach: false
+            image: &memcached_image {get_param: DockerMemcachedImage}
+            privileged: false
+            user: root
+            volumes:
+               - /var/lib/config-data/memcached/etc/sysconfig/memcached:/etc/sysconfig/memcached:ro
+               - /var/log/containers/memcached:/var/log/
+            command: ['/bin/bash', '-c', 'source /etc/sysconfig/memcached; touch /var/log/memcached.log && chown ${USER} /var/log/memcached.log']
+          memcached:
+            start_order: 1
+            image: *memcached_image
+            net: host
+            privileged: false
+            restart: always
+            volumes:
+              list_concat:
+                - {get_attr: [ContainersCommon, volumes]}
+                -
+                  - /var/lib/config-data/memcached/etc/sysconfig/memcached:/etc/sysconfig/memcached:ro
+                  - /var/log/containers/memcached:/var/log/
+            # NOTE: We're adding the log redirection here, even though should
+            # already be part of the options. This is because the redirection
+            # via the options is not working and ends up being passed as a
+            # parameter to the memcached command (which it silently ignores).
+            # Thus the need for the explicit redirection here. The redirection
+            # will be removed from the $OPTIONS, which is done via the puppet
+            # module, but we'll only be able to do this once the following pull
+            # request merges: https://github.com/saz/puppet-memcached/pull/88
+            command: ['/bin/bash', '-c', 'source /etc/sysconfig/memcached; /usr/bin/memcached -p ${PORT} -u ${USER} -m ${CACHESIZE} -c ${MAXCONN} $OPTIONS >> /var/log/memcached.log 2>&1']
+      upgrade_tasks:
+        - name: Stop and disable memcached service
+          tags: step2
+          service: name=memcached state=stopped enabled=no

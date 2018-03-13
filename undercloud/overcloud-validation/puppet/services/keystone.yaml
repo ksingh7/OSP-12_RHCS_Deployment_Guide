@@ -1,0 +1,408 @@
+heat_template_version: pike
+
+description: >
+  OpenStack Keystone service configured with Puppet
+
+parameters:
+  KeystoneEnableDBPurge:
+    default: true
+    description: |
+        Whether to create cron job for purging soft deleted rows in Keystone database.
+    type: boolean
+  KeystoneSSLCertificate:
+    default: ''
+    description: Keystone certificate for verifying token validity.
+    type: string
+  KeystoneSSLCertificateKey:
+    default: ''
+    description: Keystone key for signing tokens.
+    type: string
+    hidden: true
+  KeystoneNotificationDriver:
+    description: Comma-separated list of Oslo notification drivers used by Keystone
+    default: ['messaging']
+    type: comma_delimited_list
+  KeystoneNotificationFormat:
+    description: The Keystone notification format
+    default: 'basic'
+    type: string
+    constraints:
+      - allowed_values: [ 'basic', 'cadf' ]
+  KeystoneRegion:
+    type: string
+    default: 'regionOne'
+    description: Keystone region for endpoint
+  KeystoneTokenProvider:
+    description: The keystone token format
+    type: string
+    default: 'fernet'
+    constraints:
+      - allowed_values: ['uuid', 'fernet']
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  Debug:
+    type: string
+    default: ''
+    description: Set to True to enable debugging on all services.
+  KeystoneDebug:
+    default: ''
+    description: Set to True to enable debugging Keystone service.
+    type: string
+  AdminEmail:
+    default: 'admin@example.com'
+    description: The email for the keystone admin account.
+    type: string
+    hidden: true
+  AdminPassword:
+    description: The password for the keystone admin account, used for monitoring, querying neutron etc.
+    type: string
+    hidden: true
+  AdminToken:
+    description: The keystone auth secret and db password.
+    type: string
+    hidden: true
+  RabbitPassword:
+    description: The password for RabbitMQ
+    type: string
+    hidden: true
+  RabbitUserName:
+    default: guest
+    description: The username for RabbitMQ
+    type: string
+  RabbitClientUseSSL:
+    default: false
+    description: >
+        Rabbit client subscriber parameter to specify
+        an SSL connection to the RabbitMQ host.
+    type: string
+  RabbitClientPort:
+    default: 5672
+    description: Set rabbit subscriber port, change this if using SSL
+    type: number
+  KeystoneWorkers:
+    type: string
+    description: Set the number of workers for keystone::wsgi::apache
+    default: '%{::os_workers}'
+  MonitoringSubscriptionKeystone:
+    default: 'overcloud-keystone'
+    type: string
+  KeystoneCredential0:
+    type: string
+    description: The first Keystone credential key. Must be a valid key.
+  KeystoneCredential1:
+    type: string
+    description: The second Keystone credential key. Must be a valid key.
+  KeystoneFernetKey0:
+    type: string
+    default: ''
+    description: (DEPRECATED) The first Keystone fernet key. Must be a valid key.
+  KeystoneFernetKey1:
+    type: string
+    default: ''
+    description: (DEPRECATED) The second Keystone fernet key. Must be a valid key.
+  KeystoneFernetKeys:
+    type: json
+    description: Mapping containing keystone's fernet keys and their paths.
+  KeystoneFernetMaxActiveKeys:
+    type: number
+    description: The maximum active keys in the keystone fernet key repository.
+    default: 5
+  ManageKeystoneFernetKeys:
+    type: boolean
+    default: true
+    description: Whether TripleO should manage the keystone fernet keys or not.
+                 If set to true, the fernet keys will get the values from the
+                 saved keys repository in mistral (the KeystoneFernetKeys
+                 variable). If set to false, only the stack creation
+                 initializes the keys, but subsequent updates won't touch them.
+  KeystoneLoggingSource:
+    type: json
+    default:
+      tag: openstack.keystone
+      path: /var/log/keystone/keystone.log
+  EnableInternalTLS:
+    type: boolean
+    default: false
+  KeystoneCronTokenFlushEnsure:
+    type: string
+    description: >
+        Cron to purge expired tokens - Ensure
+    default: 'present'
+  KeystoneCronTokenFlushMinute:
+    type: comma_delimited_list
+    description: >
+        Cron to purge expired tokens - Minute
+    default: '1'
+  KeystoneCronTokenFlushHour:
+    type: comma_delimited_list
+    description: >
+        Cron to purge expired tokens - Hour
+    default: '*'
+  KeystoneCronTokenFlushMonthday:
+    type: comma_delimited_list
+    description: >
+        Cron to purge expired tokens - Month Day
+    default: '*'
+  KeystoneCronTokenFlushMonth:
+    type: comma_delimited_list
+    description: >
+        Cron to purge expired tokens - Month
+    default: '*'
+  KeystoneCronTokenFlushWeekday:
+    type: comma_delimited_list
+    description: >
+        Cron to purge expired tokens - Week Day
+    default: '*'
+  KeystoneCronTokenFlushMaxDelay:
+    type: number
+    description: >
+        Cron to purge expired tokens - Max Delay
+    default: 0
+  KeystoneCronTokenFlushDestination:
+    type: string
+    description: >
+        Cron to purge expired tokens - Log destination
+    default: '/var/log/keystone/keystone-tokenflush.log'
+  KeystoneCronTokenFlushUser:
+    type: string
+    description: >
+        Cron to purge expired tokens - User
+    default: 'keystone'
+  KeystonePolicies:
+    description: |
+      A hash of policies to configure for Keystone.
+      e.g. { keystone-context_is_admin: { key: context_is_admin, value: 'role:admin' } }
+    default: {}
+    type: json
+  KeystoneLDAPDomainEnable:
+    description: Trigger to call ldap_backend puppet keystone define.
+    type: boolean
+    default: False
+  KeystoneLDAPBackendConfigs:
+    description: Hash containing the configurations for the LDAP backends
+                 configured in keystone.
+    type: json
+    default: {}
+    hidden: true
+  NotificationDriver:
+    type: string
+    default: 'messagingv2'
+    description: Driver or drivers to handle sending notifications.
+    constraints:
+      - allowed_values: [ 'messagingv2', 'noop' ]
+
+parameter_groups:
+- label: deprecated
+  description: |
+   The following parameters are deprecated and will be removed. They should not
+   be relied on for new deployments. If you have concerns regarding deprecated
+   parameters, please contact the TripleO development team on IRC or the
+   OpenStack mailing list.
+  parameters:
+  - KeystoneFernetKey0
+  - KeystoneFernetKey1
+  - KeystoneNotificationDriver
+
+resources:
+
+  ApacheServiceBase:
+    type: ./apache.yaml
+    properties:
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      EndpointMap: {get_param: EndpointMap}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+      EnableInternalTLS: {get_param: EnableInternalTLS}
+
+conditions:
+  keystone_fernet_tokens: {equals: [{get_param: KeystoneTokenProvider}, "fernet"]}
+  keystone_ldap_domain_enabled: {equals: [{get_param: KeystoneLDAPDomainEnable}, True]}
+  service_debug_unset: {equals : [{get_param: KeystoneDebug}, '']}
+
+outputs:
+  role_data:
+    description: Role data for the Keystone role.
+    value:
+      service_name: keystone
+      monitoring_subscription: {get_param: MonitoringSubscriptionKeystone}
+      logging_source: {get_param: KeystoneLoggingSource}
+      logging_groups:
+        - keystone
+      config_settings:
+        map_merge:
+          - get_attr: [ApacheServiceBase, role_data, config_settings]
+          - keystone::database_connection:
+              make_url:
+                scheme: {get_param: [EndpointMap, MysqlInternal, protocol]}
+                username: keystone
+                password: {get_param: AdminToken}
+                host: {get_param: [EndpointMap, MysqlInternal, host]}
+                path: /keystone
+                query:
+                  read_default_file: /etc/my.cnf.d/tripleo.cnf
+                  read_default_group: tripleo
+            keystone::admin_token: {get_param: AdminToken}
+            keystone::admin_password: {get_param: AdminPassword}
+            keystone::roles::admin::password: {get_param: AdminPassword}
+            keystone::policy::policies: {get_param: KeystonePolicies}
+            keystone_ssl_certificate: {get_param: KeystoneSSLCertificate}
+            keystone_ssl_certificate_key: {get_param: KeystoneSSLCertificateKey}
+            keystone::token_provider: {get_param: KeystoneTokenProvider}
+            keystone::enable_fernet_setup: {if: [keystone_fernet_tokens, true, false]}
+            keystone::fernet_max_active_keys: {get_param: KeystoneFernetMaxActiveKeys}
+            keystone::enable_proxy_headers_parsing: true
+            keystone::enable_credential_setup: true
+            keystone::credential_keys:
+              '/etc/keystone/credential-keys/0':
+                content: {get_param: KeystoneCredential0}
+              '/etc/keystone/credential-keys/1':
+                content: {get_param: KeystoneCredential1}
+            keystone::fernet_keys: {get_param: KeystoneFernetKeys}
+            keystone::fernet_replace_keys: {get_param: ManageKeystoneFernetKeys}
+            keystone::debug:
+              if:
+              - service_debug_unset
+              - {get_param: Debug }
+              - {get_param: KeystoneDebug }
+            keystone::rabbit_userid: {get_param: RabbitUserName}
+            keystone::rabbit_password: {get_param: RabbitPassword}
+            keystone::rabbit_use_ssl: {get_param: RabbitClientUseSSL}
+            keystone::rabbit_port: {get_param: RabbitClientPort}
+            keystone::notification_driver: {get_param: NotificationDriver}
+            keystone::notification_format: {get_param: KeystoneNotificationFormat}
+            keystone::roles::admin::email: {get_param: AdminEmail}
+            keystone::roles::admin::password: {get_param: AdminPassword}
+            keystone::endpoint::public_url: {get_param: [EndpointMap, KeystonePublic, uri_no_suffix]}
+            keystone::endpoint::internal_url: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix]}
+            keystone::endpoint::admin_url: {get_param: [EndpointMap, KeystoneAdmin, uri_no_suffix]}
+            keystone::endpoint::region: {get_param: KeystoneRegion}
+            keystone::endpoint::version: ''
+            keystone_enable_db_purge: {get_param: KeystoneEnableDBPurge}
+            keystone::rabbit_heartbeat_timeout_threshold: 60
+            keystone::cron::token_flush::maxdelay: 3600
+            keystone::roles::admin::service_tenant: 'service'
+            keystone::roles::admin::admin_tenant: 'admin'
+            keystone::cron::token_flush::destination: '/var/log/keystone/keystone-tokenflush.log'
+            keystone::config::keystone_config:
+              ec2/driver:
+                value: 'keystone.contrib.ec2.backends.sql.Ec2'
+            keystone::service_name: 'httpd'
+            keystone::enable_ssl: {get_param: EnableInternalTLS}
+            keystone::wsgi::apache::ssl: {get_param: EnableInternalTLS}
+            keystone::wsgi::apache::servername:
+              str_replace:
+                template:
+                  "%{hiera('fqdn_$NETWORK')}"
+                params:
+                  $NETWORK: {get_param: [ServiceNetMap, KeystonePublicApiNetwork]}
+            keystone::wsgi::apache::servername_admin:
+              str_replace:
+                template:
+                  "%{hiera('fqdn_$NETWORK')}"
+                params:
+                  $NETWORK: {get_param: [ServiceNetMap, KeystoneAdminApiNetwork]}
+            keystone::wsgi::apache::workers: {get_param: KeystoneWorkers}
+            # override via extraconfig:
+            keystone::wsgi::apache::threads: 1
+            keystone::db::database_db_max_retries: -1
+            keystone::db::database_max_retries: -1
+            tripleo.keystone.firewall_rules:
+              '111 keystone':
+                dport:
+                  - 5000
+                  - 13000
+                  - 35357
+                  - 13357
+            keystone::admin_bind_host:
+              str_replace:
+                template:
+                  "%{hiera('fqdn_$NETWORK')}"
+                params:
+                  $NETWORK: {get_param: [ServiceNetMap, KeystoneAdminApiNetwork]}
+            keystone::public_bind_host:
+              str_replace:
+                template:
+                  "%{hiera('fqdn_$NETWORK')}"
+                params:
+                  $NETWORK: {get_param: [ServiceNetMap, KeystonePublicApiNetwork]}
+            # NOTE: bind IP is found in Heat replacing the network name with the
+            # local node IP for the given network; replacement examples
+            # (eg. for internal_api):
+            # internal_api -> IP
+            # internal_api_uri -> [IP]
+            # internal_api_subnet - > IP/CIDR
+            # NOTE: this applies to all 2 bind IP settings below...
+            keystone::wsgi::apache::bind_host: {get_param: [ServiceNetMap, KeystonePublicApiNetwork]}
+            keystone::wsgi::apache::admin_bind_host: {get_param: [ServiceNetMap, KeystoneAdminApiNetwork]}
+            keystone::cron::token_flush::ensure: {get_param: KeystoneCronTokenFlushEnsure}
+            keystone::cron::token_flush::minute: {get_param: KeystoneCronTokenFlushMinute}
+            keystone::cron::token_flush::hour: {get_param: KeystoneCronTokenFlushHour}
+            keystone::cron::token_flush::monthday: {get_param: KeystoneCronTokenFlushMonthday}
+            keystone::cron::token_flush::month: {get_param: KeystoneCronTokenFlushMonth}
+            keystone::cron::token_flush::weekday: {get_param: KeystoneCronTokenFlushWeekday}
+            keystone::cron::token_flush::maxdelay: {get_param: KeystoneCronTokenFlushMaxDelay}
+            keystone::cron::token_flush::destination: {get_param: KeystoneCronTokenFlushDestination}
+            keystone::cron::token_flush::user: {get_param: KeystoneCronTokenFlushUser}
+          -
+            if:
+            - keystone_ldap_domain_enabled
+            -
+              tripleo::profile::base::keystone::ldap_backend_enable: True
+              keystone::using_domain_config: True
+              tripleo::profile::base::keystone::ldap_backends_config:
+                get_param: KeystoneLDAPBackendConfigs
+            - {}
+
+      step_config: |
+        include ::tripleo::profile::base::keystone
+      service_config_settings:
+        mysql:
+          keystone::db::mysql::password: {get_param: AdminToken}
+          keystone::db::mysql::user: keystone
+          keystone::db::mysql::host: {get_param: [EndpointMap, MysqlInternal, host_nobrackets]}
+          keystone::db::mysql::dbname: keystone
+          keystone::db::mysql::allowed_hosts:
+            - '%'
+            - "%{hiera('mysql_bind_host')}"
+        horizon:
+          if:
+          - keystone_ldap_domain_enabled
+          -
+            horizon::keystone_multidomain_support: true
+            horizon::keystone_default_domain: 'Default'
+          - {}
+      metadata_settings:
+        get_attr: [ApacheServiceBase, role_data, metadata_settings]
+      upgrade_tasks:
+        list_concat:
+          - get_attr: [ApacheServiceBase, role_data, upgrade_tasks]
+          -
+            - name: Stop keystone service (running under httpd)
+              tags: step1
+              service: name=httpd state=stopped

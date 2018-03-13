@@ -4,7 +4,7 @@ resource_registry:
   OS::TripleO::NodeUserData: /home/stack/templates/wipe-disks.yaml
 
 parameter_defaults:
-
+  DockerCephDaemonImage: 192.168.24.1:8787/rhceph/rhceph-3-rhel7:latest
   CephAnsibleDisksConfig:
     osd_scenario: non-collocated
     devices:
@@ -46,6 +46,13 @@ parameter_defaults:
     osd_journal_size: 10240
     mon_osd_full_ratio: 90
     max_open_files: 131072
+
+  ControllerExtraConfig:
+    tripleo::firewall::firewall_rules:
+      '300 allow ceph mgrs':
+        port: 6800
+        proto: tcp
+        action: accept
 
   CephPools:
     - name: vms

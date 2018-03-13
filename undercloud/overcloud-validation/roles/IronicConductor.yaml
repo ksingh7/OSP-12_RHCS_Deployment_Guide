@@ -1,0 +1,26 @@
+###############################################################################
+# Role: IronicConductor                                                       #
+###############################################################################
+- name: IronicConductor
+  description: |
+    Ironic Conductor node role
+  HostnameFormatDefault: '%stackname%-ironic-%index%'
+  ServicesDefault:
+    - OS::TripleO::Services::AuditD
+    - OS::TripleO::Services::CACerts
+    - OS::TripleO::Services::CertmongerUser
+    - OS::TripleO::Services::Collectd
+    - OS::TripleO::Services::Docker
+    - OS::TripleO::Services::FluentdClient
+    - OS::TripleO::Services::IronicConductor
+    - OS::TripleO::Services::IronicPxe
+    - OS::TripleO::Services::Kernel
+    - OS::TripleO::Services::MySQLClient
+    - OS::TripleO::Services::Ntp
+    - OS::TripleO::Services::ContainersLogrotateCrond
+    - OS::TripleO::Services::SensuClient
+    - OS::TripleO::Services::Snmp
+    - OS::TripleO::Services::Timezone
+    - OS::TripleO::Services::TripleoFirewall
+    - OS::TripleO::Services::TripleoPackages
+    - OS::TripleO::Services::Tuned

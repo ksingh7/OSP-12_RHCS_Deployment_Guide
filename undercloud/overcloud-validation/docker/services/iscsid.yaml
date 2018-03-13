@@ -1,0 +1,124 @@
+heat_template_version: pike
+
+description: >
+  OpenStack containerized Iscsid service
+
+parameters:
+  DockerIscsidImage:
+    description: image
+    type: string
+  DockerIscsidConfigImage:
+    description: The container image to use for the iscsid config_volume
+    type: string
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+
+resources:
+
+  ContainersCommon:
+    type: ./containers-common.yaml
+
+  IscsidBase:
+    type: ../../puppet/services/iscsid.yaml
+    properties:
+      EndpointMap: {get_param: EndpointMap}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+outputs:
+  role_data:
+    description: Role data for the Iscsid role.
+    value:
+      service_name: {get_attr: [IscsidBase, role_data, service_name]}
+      config_settings: {get_attr: [IscsidBase, role_data, config_settings]}
+      logging_source: {get_attr: [IscsidBase, role_data, logging_source]}
+      logging_groups: {get_attr: [IscsidBase, role_data, logging_groups]}
+      step_config: &step_config
+        {get_attr: [IscsidBase, role_data, step_config]}
+      service_config_settings: {get_attr: [IscsidBase, role_data, service_config_settings]}
+      # BEGIN DOCKER SETTINGS
+      puppet_config:
+        config_volume: iscsid
+        puppet_tags: iscsid_config
+        step_config: *step_config
+        config_image: {get_param: DockerIscsidConfigImage}
+        volumes:
+          - /etc/iscsi:/etc/iscsi
+      kolla_config:
+        /var/lib/kolla/config_files/iscsid.json:
+          command: /usr/sbin/iscsid -f
+          config_files:
+            - source: "/var/lib/kolla/config_files/src-iscsid/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+      docker_config:
+        step_3:
+          iscsid:
+            start_order: 2
+            image: {get_param: DockerIscsidImage}
+            net: host
+            privileged: true
+            restart: always
+            volumes:
+              list_concat:
+                - {get_attr: [ContainersCommon, volumes]}
+                -
+                  - /var/lib/kolla/config_files/iscsid.json:/var/lib/kolla/config_files/config.json:ro
+                  - /dev/:/dev/
+                  - /run/:/run/
+                  - /sys:/sys
+                  - /lib/modules:/lib/modules:ro
+                  - /var/lib/config-data/puppet-generated/iscsid/:/var/lib/kolla/config_files/src-iscsid:ro
+            environment:
+              - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+      host_prep_tasks:
+        - name: stat /lib/systemd/system/iscsid.socket
+          stat: path=/lib/systemd/system/iscsid.socket
+          register: stat_iscsid_socket
+        - name: Stop and disable iscsid.socket service
+          service: name=iscsid.socket state=stopped enabled=no
+          when: stat_iscsid_socket.stat.exists
+      upgrade_tasks:
+        - name: stat /lib/systemd/system/iscsid.service
+          tags: step2
+          stat: path=/lib/systemd/system/iscsid.service
+          register: stat_iscsid_service
+        - name: Stop and disable iscsid service
+          tags: step2
+          service: name=iscsid state=stopped enabled=no
+          when: (stat_iscsid_service.stat|default('')).exists|default(false)
+        - name: stat /lib/systemd/system/iscsid.socket
+          tags: step2
+          stat: path=/lib/systemd/system/iscsid.socket
+          register: stat_iscsid_socket
+        - name: Stop and disable iscsid.socket service
+          tags: step2
+          service: name=iscsid.socket state=stopped enabled=no
+          when: (stat_iscsid_socket.stat|default('')).exists|default(false)

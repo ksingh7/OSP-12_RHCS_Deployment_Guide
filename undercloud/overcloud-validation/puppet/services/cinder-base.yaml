@@ -1,0 +1,144 @@
+heat_template_version: pike
+
+description: >
+  OpenStack Cinder base service. Shared by all Cinder services.
+
+parameters:
+  CinderPassword:
+    description: The password for the cinder service account, used by cinder-api.
+    type: string
+    hidden: true
+  Debug:
+    default: ''
+    description: Set to True to enable debugging on all services.
+    type: string
+  CinderDebug:
+    default: ''
+    description: Set to True to enable debugging on Cinder services.
+    type: string
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  RabbitClientPort:
+    default: 5672
+    description: Set rabbit subscriber port, change this if using SSL
+    type: number
+  RabbitClientUseSSL:
+    default: false
+    description: >
+        Rabbit client subscriber parameter to specify
+        an SSL connection to the RabbitMQ host.
+    type: string
+  RabbitPassword:
+    description: The password for RabbitMQ
+    type: string
+    hidden: true
+  RabbitUserName:
+    default: guest
+    description: The username for RabbitMQ
+    type: string
+  CinderCronDbPurgeMinute:
+    type: string
+    description: >
+        Cron to move deleted instances to another table - Minute
+    default: '1'
+  CinderCronDbPurgeHour:
+    type: string
+    description: >
+        Cron to move deleted instances to another table - Hour
+    default: '0'
+  CinderCronDbPurgeMonthday:
+    type: string
+    description: >
+        Cron to move deleted instances to another table - Month Day
+    default: '*'
+  CinderCronDbPurgeMonth:
+    type: string
+    description: >
+        Cron to move deleted instances to another table - Month
+    default: '*'
+  CinderCronDbPurgeWeekday:
+    type: string
+    description: >
+        Cron to move deleted instances to another table - Week Day
+    default: '*'
+  CinderCronDbPurgeUser:
+    type: string
+    description: >
+        Cron to move deleted instances to another table - User
+    default: 'cinder'
+  CinderCronDbPurgeAge:
+    type: string
+    description: >
+        Cron to move deleted instances to another table - Age
+    default: '0'
+  CinderCronDbPurgeDestination:
+    type: string
+    description: >
+        Cron to move deleted instances to another table - Log destination
+    default: '/var/log/cinder/cinder-rowsflush.log'
+
+conditions:
+  service_debug_unset: {equals : [{get_param: CinderDebug}, '']}
+
+outputs:
+  role_data:
+    description: Role data for the Cinder base service.
+    value:
+      service_name: cinder_base
+      config_settings:
+        cinder::database_connection:
+          make_url:
+            scheme: {get_param: [EndpointMap, MysqlInternal, protocol]}
+            username: cinder
+            password: {get_param: CinderPassword}
+            host: {get_param: [EndpointMap, MysqlInternal, host]}
+            path: /cinder
+            query:
+              read_default_file: /etc/my.cnf.d/tripleo.cnf
+              read_default_group: tripleo
+        cinder::debug:
+          if:
+          - service_debug_unset
+          - {get_param: Debug }
+          - {get_param: CinderDebug }
+        cinder::rabbit_use_ssl: {get_param: RabbitClientUseSSL}
+        cinder::rabbit_userid: {get_param: RabbitUserName}
+        cinder::rabbit_password: {get_param: RabbitPassword}
+        cinder::rabbit_port: {get_param: RabbitClientPort}
+        cinder::rabbit_heartbeat_timeout_threshold: 60
+        cinder::cron::db_purge::destination: '/dev/null'
+        cinder::db::database_db_max_retries: -1
+        cinder::db::database_max_retries: -1
+        cinder::cron::db_purge::minute: {get_param: CinderCronDbPurgeMinute}
+        cinder::cron::db_purge::hour: {get_param: CinderCronDbPurgeHour}
+        cinder::cron::db_purge::monthday: {get_param: CinderCronDbPurgeMonthday}
+        cinder::cron::db_purge::month: {get_param: CinderCronDbPurgeMonth}
+        cinder::cron::db_purge::weekday: {get_param: CinderCronDbPurgeWeekday}
+        cinder::cron::db_purge::user: {get_param: CinderCronDbPurgeUser}
+        cinder::cron::db_purge::age: {get_param: CinderCronDbPurgeAge}
+        cinder::cron::db_purge::destination: {get_param: CinderCronDbPurgeDestination}
+        cinder::glance::glance_api_servers: {get_param: [EndpointMap, GlanceInternal, uri]}

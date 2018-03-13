@@ -1,0 +1,92 @@
+heat_template_version: pike
+
+description: >
+  OpenStack containerized Multipathd service
+
+parameters:
+  DockerMultipathdImage:
+    description: image
+    type: string
+  DockerMultipathdConfigImage:
+    description: The container image to use for the multipathd config_volume
+    type: string
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+
+resources:
+
+  ContainersCommon:
+    type: ./containers-common.yaml
+
+outputs:
+  role_data:
+    description: Role data for the Multipathd API role.
+    value:
+      service_name: multipathd
+      config_settings: {}
+      step_config: ''
+      service_config_settings: {}
+      # BEGIN DOCKER SETTINGS
+      puppet_config:
+        config_volume: multipathd
+        #puppet_tags: file
+        step_config: ''
+        config_image: {get_param: DockerMultipathdConfigImage}
+      kolla_config:
+        /var/lib/kolla/config_files/multipathd.json:
+          command: /usr/sbin/multipathd -d
+          config_files:
+            - source: "/var/lib/kolla/config_files/src-iscsid/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+      docker_config:
+        step_3:
+          multipathd:
+            start_order: 1
+            image: {get_param: DockerMultipathdImage}
+            net: host
+            privileged: true
+            restart: always
+            volumes:
+              list_concat:
+                - {get_attr: [ContainersCommon, volumes]}
+                -
+                  - /var/lib/kolla/config_files/multipathd.json:/var/lib/kolla/config_files/config.json:ro
+                  - /var/lib/config-data/puppet-generated/iscsid/:/var/lib/kolla/config_files/src-iscsid:ro
+                  - /dev/:/dev/
+                  - /run/:/run/
+                  - /sys:/sys
+                  - /lib/modules:/lib/modules:ro
+                  - /var/lib/cinder:/var/lib/cinder
+            environment:
+              - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+      host_prep_tasks:
+      upgrade_tasks:
+        - name: Stop and disable multipathd service
+          tags: step2
+          service: name=multipathd state=stopped enabled=no

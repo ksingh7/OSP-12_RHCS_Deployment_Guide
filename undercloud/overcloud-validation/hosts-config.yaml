@@ -1,0 +1,37 @@
+heat_template_version: pike
+description: 'All Hosts Config'
+
+parameters:
+  hosts:
+    type: string
+
+resources:
+
+  hostsConfigImpl:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      inputs:
+        - name: hosts
+          default:
+            list_join:
+              - ' '
+              - str_split:
+                - '\n'
+                - {get_param: hosts}
+      config: {get_file: scripts/hosts-config.sh}
+
+outputs:
+  config_id:
+    description: The ID of the hostsConfigImpl resource.
+    value:
+      {get_resource: hostsConfigImpl}
+  hosts_entries:
+    description: |
+      The content that should be appended to your /etc/hosts if you want to get
+      hostname-based access to the deployed nodes (useful for testing without
+      setting up a DNS).
+    value: {get_param: hosts}
+  OS::stack_id:
+    description: The ID of the hostsConfigImpl resource.
+    value: {get_resource: hostsConfigImpl}

@@ -1,0 +1,12 @@
+parameter_defaults:
+  # Consistent Hostname format
+
+  ControllerHostnameFormat: overcloud-controller-%index%
+
+  ComputeHostnameFormat: overcloud-compute-%index%
+
+  BlockStorageHostnameFormat: overcloud-blockstorage-%index%
+
+  ObjectStorageHostnameFormat: overcloud-objectstorage-%index%
+
+  CephStorageHostnameFormat: overcloud-cephstorage-%index%

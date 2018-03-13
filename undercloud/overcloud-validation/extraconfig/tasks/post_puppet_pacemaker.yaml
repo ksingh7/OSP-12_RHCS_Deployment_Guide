@@ -1,0 +1,37 @@
+heat_template_version: pike
+description: 'Post-Puppet Config for Pacemaker deployments'
+
+parameters:
+  servers:
+    type: json
+  input_values:
+     type: json
+     description: input values for the software deployments
+
+resources:
+  ControllerPostPuppetMaintenanceModeConfig:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      config: |
+        #!/bin/bash
+        pacemaker_status=$(systemctl is-active pacemaker)
+
+        if [ "$pacemaker_status" = "active" ]; then
+            pcs property set maintenance-mode=false
+        fi
+
+  ControllerPostPuppetMaintenanceModeDeployment:
+    type: OS::Heat::SoftwareDeployments
+    properties:
+      name: ControllerPostPuppetMaintenanceModeDeployment
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: ControllerPostPuppetMaintenanceModeConfig}
+      input_values: {get_param: input_values}
+
+  ControllerPostPuppetRestart:
+    type: OS::TripleO::Tasks::ControllerPostPuppetRestart
+    depends_on: ControllerPostPuppetMaintenanceModeDeployment
+    properties:
+      servers: {get_param: [servers, Controller]}
+      input_values: {get_param: input_values}

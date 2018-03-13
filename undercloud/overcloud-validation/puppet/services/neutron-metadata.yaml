@@ -1,0 +1,129 @@
+heat_template_version: pike
+
+description: >
+  OpenStack Neutron Metadata agent configured with Puppet
+
+parameters:
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  NeutronMetadataProxySharedSecret:
+    description: Shared secret to prevent spoofing
+    type: string
+    hidden: true
+  NeutronWorkers:
+    default: ''
+    description: |
+      Sets the number of worker processes for the neutron metadata agent. The
+      default value results in the configuration being left unset and a
+      system-dependent default will be chosen (usually the number of
+      processors). Please note that this can result in a large number of
+      processes and memory consumption on systems with a large core count. On
+      such systems it is recommended that a non-default value be selected that
+      matches the load requirements.
+    type: string
+  NeutronPassword:
+    description: The password for the neutron service and db account, used by neutron agents.
+    type: string
+    hidden: true
+  MonitoringSubscriptionNeutronMetadata:
+    default: 'overcloud-neutron-metadata'
+    type: string
+  NeutronMetadataAgentLoggingSource:
+    type: json
+    default:
+      tag: openstack.neutron.agent.metadata
+      path: /var/log/neutron/metadata-agent.log
+  EnableInternalTLS:
+    type: boolean
+    default: false
+
+conditions:
+  neutron_workers_unset: {equals : [{get_param: NeutronWorkers}, '']}
+
+  internal_tls_enabled: {equals: [{get_param: EnableInternalTLS}, true]}
+
+resources:
+
+  NeutronBase:
+    type: ./neutron-base.yaml
+    properties:
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      EndpointMap: {get_param: EndpointMap}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+outputs:
+  role_data:
+    description: Role data for the Neutron Metadata agent service.
+    value:
+      service_name: neutron_metadata
+      monitoring_subscription: {get_param: MonitoringSubscriptionNeutronMetadata}
+      logging_source: {get_param: NeutronMetadataAgentLoggingSource}
+      logging_groups:
+        - neutron
+      config_settings:
+        map_merge:
+          - get_attr: [NeutronBase, role_data, config_settings]
+          - neutron::agents::metadata::shared_secret: {get_param: NeutronMetadataProxySharedSecret}
+            neutron::agents::metadata::auth_password: {get_param: NeutronPassword}
+            neutron::agents::metadata::auth_url: { get_param: [EndpointMap, KeystoneInternal, uri_no_suffix] }
+            neutron::agents::metadata::auth_tenant: 'service'
+            neutron::agents::metadata::metadata_ip: "%{hiera('nova_metadata_vip')}"
+            neutron::agents::metadata::metadata_host:
+              str_replace:
+                template:
+                  "%{hiera('cloud_name_$NETWORK')}"
+                params:
+                  $NETWORK: {get_param: [ServiceNetMap, NovaMetadataNetwork]}
+            neutron::agents::metadata::metadata_protocol:
+              if:
+              - internal_tls_enabled
+              - 'https'
+              - 'http'
+          -
+            if:
+            - neutron_workers_unset
+            - {}
+            - neutron::agents::metadata::metadata_workers: {get_param: NeutronWorkers}
+      step_config: |
+        include tripleo::profile::base::neutron::metadata
+      upgrade_tasks:
+        - name: Check if neutron_metadata_agent is deployed
+          command: systemctl is-enabled neutron-metadata-agent
+          tags: common
+          ignore_errors: True
+          register: neutron_metadata_agent_enabled
+        - name: "PreUpgrade step0,validation: Check service neutron-metadata-agent is running"
+          shell: /usr/bin/systemctl show 'neutron-metadata-agent' --property ActiveState | grep '\bactive\b'
+          when: neutron_metadata_agent_enabled.rc == 0
+          tags: step0,validation
+        - name: Stop neutron_metadata service
+          tags: step1
+          when: neutron_metadata_agent_enabled.rc == 0
+          service: name=neutron-metadata-agent state=stopped

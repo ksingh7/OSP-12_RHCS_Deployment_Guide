@@ -1,0 +1,123 @@
+heat_template_version: pike
+
+description: >
+  OpenStack containerized Gnocchi Statsd service
+
+parameters:
+  DockerGnocchiStatsdImage:
+    description: image
+    type: string
+  DockerGnocchiConfigImage:
+    description: The container image to use for the gnocchi config_volume
+    type: string
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+
+resources:
+
+  ContainersCommon:
+    type: ./containers-common.yaml
+
+  MySQLClient:
+    type: ../../puppet/services/database/mysql-client.yaml
+
+  GnocchiStatsdBase:
+    type: ../../puppet/services/gnocchi-statsd.yaml
+    properties:
+      EndpointMap: {get_param: EndpointMap}
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+outputs:
+  role_data:
+    description: Role data for the Gnocchi API role.
+    value:
+      service_name: {get_attr: [GnocchiStatsdBase, role_data, service_name]}
+      config_settings: {get_attr: [GnocchiStatsdBase, role_data, config_settings]}
+      logging_source: {get_attr: [GnocchiStatsdBase, role_data, logging_source]}
+      logging_groups: {get_attr: [GnocchiStatsdBase, role_data, logging_groups]}
+      step_config: &step_config
+        list_join:
+          - "\n"
+          - - {get_attr: [GnocchiStatsdBase, role_data, step_config]}
+            - {get_attr: [MySQLClient, role_data, step_config]}
+      service_config_settings: {get_attr: [GnocchiStatsdBase, role_data, service_config_settings]}
+      # BEGIN DOCKER SETTINGS
+      puppet_config:
+        config_volume: gnocchi
+        puppet_tags: gnocchi_config
+        step_config: *step_config
+        config_image: {get_param: DockerGnocchiConfigImage}
+      kolla_config:
+        /var/lib/kolla/config_files/gnocchi_statsd.json:
+          command: /usr/bin/gnocchi-statsd
+          config_files:
+            - source: "/var/lib/kolla/config_files/src/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+            - source: "/var/lib/kolla/config_files/src-ceph/"
+              dest: "/etc/ceph/"
+              merge: true
+              preserve_properties: true
+          permissions:
+            - path: /var/log/gnocchi
+              owner: gnocchi:gnocchi
+              recurse: true
+      docker_config:
+        step_5:
+          gnocchi_statsd:
+            image: {get_param: DockerGnocchiStatsdImage}
+            net: host
+            privileged: false
+            restart: always
+            volumes:
+              list_concat:
+                - {get_attr: [ContainersCommon, volumes]}
+                -
+                  - /var/lib/kolla/config_files/gnocchi_statsd.json:/var/lib/kolla/config_files/config.json:ro
+                  - /var/lib/config-data/puppet-generated/gnocchi/:/var/lib/kolla/config_files/src:ro
+                  - /var/log/containers/gnocchi:/var/log/gnocchi
+                  - /etc/ceph:/var/lib/kolla/config_files/src-ceph:ro
+            environment:
+              - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+      host_prep_tasks:
+        - name: create persistent logs directory
+          file:
+            path: /var/log/containers/gnocchi
+            state: directory
+        - name: ensure ceph configurations exist
+          file:
+            path: /etc/ceph
+            state: directory
+      upgrade_tasks:
+        - name: Stop and disable openstack-gnocchi-statsd service
+          tags: step2
+          service: name=openstack-gnocchi-statsd.service state=stopped enabled=no

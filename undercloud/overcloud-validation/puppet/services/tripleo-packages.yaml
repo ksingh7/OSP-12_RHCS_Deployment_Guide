@@ -1,0 +1,88 @@
+heat_template_version: pike
+
+description: >
+  TripleO Package installation settings
+
+parameters:
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  EnablePackageInstall:
+    default: 'false'
+    description: Set to true to enable package installation at deploy time
+    type: boolean
+
+outputs:
+  role_data:
+    description: Role data for the TripleO package settings
+    value:
+      service_name: tripleo_packages
+      config_settings:
+        tripleo::packages::enable_install: {get_param: EnablePackageInstall}
+      step_config: |
+        include ::tripleo::packages
+      upgrade_tasks:
+        - name: Check yum for rpm-python present
+          tags: step0
+          yum: "name=rpm-python state=present"
+          register: rpm_python_check
+        - name: Fail when rpm-python wasn't present
+          fail: msg="rpm-python package was not present before this run! Check environment before re-running"
+          when: rpm_python_check.changed != false
+          tags: step0
+        - name: Check for os-net-config upgrade
+          shell: "yum check-upgrade | awk '/os-net-config/{print}'"
+          register: os_net_config_need_upgrade
+          tags: step3
+        - name: Check that os-net-config has configuration
+          shell: test -s /etc/os-net-config/config.json
+          register: os_net_config_has_config
+          ignore_errors: True
+          tags: step3
+        - block:
+            - name: Upgrade os-net-config
+              yum: name=os-net-config state=latest
+            - name: take new os-net-config parameters into account now
+              command: os-net-config --no-activate -c /etc/os-net-config/config.json -v --detailed-exit-codes
+              register: os_net_config_upgrade
+              failed_when: os_net_config_upgrade.rc not in [0,2]
+              changed_when: os_net_config_upgrade.rc == 2
+          tags: step3
+          when: os_net_config_need_upgrade.stdout and os_net_config_has_config.rc == 0
+        - name: Update all packages
+          tags: step3
+          yum: name=* state=latest
+      update_tasks:
+        - name: Check for existing yum.pid
+          stat:  path=/var/run/yum.pid
+          register: yum_pid_file
+          when: step == "0" or step == "3"
+        - name: Exit if existing yum process
+          fail: msg="ERROR existing yum.pid detected - can't continue! Please ensure there is no other package update process for the duration of the minor update worfklow. Exiting."
+          when: (step == "0" or step == "3") and yum_pid_file.stat.exists
+        - name: Update all packages
+          yum: name=* state=latest update_cache=yes  # cache for tripleo/+bug/1703830
+          when: step == "3"

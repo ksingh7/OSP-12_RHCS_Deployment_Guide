@@ -1,0 +1,122 @@
+heat_template_version: pike
+
+description: >
+  Gnocchi service configured with Puppet
+
+parameters:
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  GnocchiIndexerBackend:
+    default: 'mysql'
+    description: The short name of the Gnocchi indexer backend to use.
+    type: string
+  MetricProcessingDelay:
+    default: 30
+    description: Delay between processing metrics.
+    type: number
+  NumberOfStorageSacks:
+    default: 128
+    description: Number of storage sacks to create.
+    type: number
+  GnocchiPassword:
+    description: The password for the gnocchi service and db account.
+    type: string
+    hidden: true
+  GnocchiRbdPoolName:
+    default: metrics
+    type: string
+  CephClientUserName:
+    default: openstack
+    type: string
+  RedisPassword:
+    description: The password for the redis service account.
+    type: string
+    hidden: true
+  Debug:
+    type: string
+    default: ''
+    description: Set to True to enable debugging on all services.
+  GnocchiDebug:
+    default: ''
+    description: Set to True to enable debugging Gnocchi services.
+    type: string
+
+conditions:
+  service_debug_unset: {equals : [{get_param: GnocchiDebug}, '']}
+
+outputs:
+  aux_parameters:
+    description: Additional parameters referenced outside the base file
+    value:
+      gnocchi_indexer_backend: {get_param: GnocchiIndexerBackend}
+  role_data:
+    description: Shared role data for the Heat services.
+    value:
+      service_name: gnocchi_base
+      config_settings:
+        #Gnocchi engine
+        gnocchi_redis_password: {get_param: RedisPassword}
+        gnocchi::debug:
+          if:
+          - service_debug_unset
+          - {get_param: Debug }
+          - {get_param: GnocchiDebug }
+        gnocchi::db::database_connection:
+          make_url:
+            scheme: {get_param: [EndpointMap, MysqlInternal, protocol]}
+            username: gnocchi
+            password: {get_param: GnocchiPassword}
+            host: {get_param: [EndpointMap, MysqlInternal, host]}
+            path: /gnocchi
+            query:
+              read_default_file: /etc/my.cnf.d/tripleo.cnf
+              read_default_group: tripleo
+        gnocchi::db::sync::extra_opts:
+          str_replace:
+            template: " --sacks-number NUM_SACKS"
+            params:
+              NUM_SACKS: {get_param: NumberOfStorageSacks}
+        gnocchi::storage::metric_processing_delay: {get_param: MetricProcessingDelay}
+        gnocchi::storage::swift::swift_user: 'service:gnocchi'
+        gnocchi::storage::swift::swift_auth_version: 3
+        gnocchi::storage::swift::swift_key: {get_param: GnocchiPassword}
+        gnocchi::storage::swift::swift_authurl: {get_param: [EndpointMap, KeystoneV3Internal, uri]}
+        gnocchi::storage::ceph::ceph_pool: {get_param: GnocchiRbdPoolName}
+        gnocchi::storage::ceph::ceph_username: {get_param: CephClientUserName}
+        gnocchi::storage::ceph::ceph_keyring:
+          list_join:
+          - '.'
+          - - '/etc/ceph/ceph'
+            - 'client'
+            - {get_param: CephClientUserName}
+            - 'keyring'
+        #Gnocchi statsd
+        gnocchi::statsd::resource_id: '0a8b55df-f90f-491c-8cb9-7cdecec6fc26'
+        gnocchi::statsd::user_id: '27c0d3f8-e7ee-42f0-8317-72237d1c5ae3'
+        gnocchi::statsd::project_id: '6c38cd8d-099a-4cb2-aecf-17be688e8616'
+        gnocchi::statsd::flush_delay: 10
+        gnocchi::statsd::archive_policy_name: 'low'

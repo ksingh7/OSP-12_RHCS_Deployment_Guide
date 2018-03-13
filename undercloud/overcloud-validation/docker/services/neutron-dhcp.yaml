@@ -1,0 +1,131 @@
+heat_template_version: pike
+
+description: >
+  OpenStack containerized Neutron DHCP service
+
+parameters:
+  DockerNeutronDHCPImage:
+    description: image
+    type: string
+  DockerNeutronConfigImage:
+    description: The container image to use for the neutron config_volume
+    type: string
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+
+resources:
+
+  ContainersCommon:
+    type: ./containers-common.yaml
+
+  NeutronBase:
+    type: ../../puppet/services/neutron-dhcp.yaml
+    properties:
+      EndpointMap: {get_param: EndpointMap}
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+outputs:
+  role_data:
+    description: Role data for the Neutron DHCP role.
+    value:
+      service_name: {get_attr: [NeutronBase, role_data, service_name]}
+      config_settings:
+        map_merge:
+          - get_attr: [NeutronBase, role_data, config_settings]
+      logging_source: {get_attr: [NeutronBase, role_data, logging_source]}
+      logging_groups: {get_attr: [NeutronBase, role_data, logging_groups]}
+      step_config: &step_config
+        get_attr: [NeutronBase, role_data, step_config]
+      service_config_settings: {get_attr: [NeutronBase, role_data, service_config_settings]}
+      # BEGIN DOCKER SETTINGS
+      puppet_config:
+        config_volume: neutron
+        puppet_tags: neutron_config,neutron_dhcp_agent_config
+        step_config: *step_config
+        config_image: {get_param: DockerNeutronConfigImage}
+      kolla_config:
+        /var/lib/kolla/config_files/neutron_dhcp.json:
+          command: /usr/bin/neutron-dhcp-agent --config-file /usr/share/neutron/neutron-dist.conf --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/dhcp_agent.ini --log-file /var/log/neutron/dhcp-agent.log --config-dir /etc/neutron/conf.d/common --config-dir /etc/neutron/conf.d/neutron-dhcp-agent
+          config_files:
+            - source: "/var/lib/kolla/config_files/src/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+          permissions:
+            - path: /var/log/neutron
+              owner: neutron:neutron
+              recurse: true
+            - path: /var/lib/neutron
+              owner: neutron:neutron
+              recurse: true
+      docker_config:
+        step_4:
+          neutron_dhcp:
+            image: {get_param: DockerNeutronDHCPImage}
+            net: host
+            pid: host
+            privileged: true
+            restart: always
+            volumes:
+              list_concat:
+                - {get_attr: [ContainersCommon, volumes]}
+                -
+                  - /var/lib/kolla/config_files/neutron_dhcp.json:/var/lib/kolla/config_files/config.json:ro
+                  - /var/lib/config-data/puppet-generated/neutron/:/var/lib/kolla/config_files/src:ro
+                  - /lib/modules:/lib/modules:ro
+                  - /run/:/run
+                  - /var/lib/neutron:/var/lib/neutron
+                  - /var/log/containers/neutron:/var/log/neutron
+            environment:
+              - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+      host_prep_tasks:
+        - name: create /var/lib/neutron
+          file:
+            path: /var/lib/neutron
+            state: directory
+        - name: create persistent logs directory
+          file:
+            path: /var/log/containers/neutron
+            state: directory
+      upgrade_tasks:
+        - name: Check if neutron_dhcp_agent is deployed
+          command: systemctl is-enabled neutron-dhcp-agent
+          tags: common
+          ignore_errors: True
+          register: neutron_dhcp_agent_enabled
+        - name: "PreUpgrade step0,validation: Check service neutron-dhcp-agent is running"
+          shell: /usr/bin/systemctl show 'neutron-dhcp-agent' --property ActiveState | grep '\bactive\b'
+          when: neutron_dhcp_agent_enabled.rc == 0
+          tags: step0,validation
+        - name: Stop and disable neutron_dhcp service
+          tags: step2
+          when: neutron_dhcp_agent_enabled.rc == 0
+          service: name=neutron-dhcp-agent state=stopped enabled=no

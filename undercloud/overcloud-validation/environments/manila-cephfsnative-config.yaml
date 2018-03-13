@@ -1,0 +1,17 @@
+# A Heat environment file which can be used to enable a
+# a Manila CephFS Native driver backend.
+resource_registry:
+  OS::TripleO::Services::ManilaApi: ../puppet/services/manila-api.yaml
+  OS::TripleO::Services::ManilaScheduler: ../puppet/services/manila-scheduler.yaml
+  # Only manila-share is pacemaker managed:
+  OS::TripleO::Services::ManilaShare: ../puppet/services/pacemaker/manila-share.yaml
+  OS::TripleO::Services::ManilaBackendCephFs: ../puppet/services/manila-backend-cephfs.yaml
+
+
+parameter_defaults:
+  ManilaCephFSNativeBackendName: cephfsnative
+  ManilaCephFSNativeDriverHandlesShareServers: false
+  ManilaCephFSNativeCephFSConfPath: '/etc/ceph/ceph.conf'
+  ManilaCephFSNativeCephFSAuthId: 'manila'
+  ManilaCephFSNativeCephFSClusterName: 'ceph'
+  ManilaCephFSNativeCephFSEnableSnapshots: false

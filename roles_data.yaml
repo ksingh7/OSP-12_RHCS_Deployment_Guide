@@ -1,6 +1,6 @@
 - name: Controller
   CountDefault: 1
-  HostnameFormatDefault: 'controller-%index%'
+  #HostnameFormatDefault: 'controller-%index%'
   ServicesDefault:
     - OS::TripleO::Services::CACerts
     - OS::TripleO::Services::CephMon
@@ -87,7 +87,7 @@
 
 - name: R630Compute
   CountDefault: 1
-  HostnameFormatDefault: '%stackname%-compute-r630-%index%'
+  #HostnameFormatDefault: '%stackname%-compute-r630-%index%'
   ServicesDefault:
     - OS::TripleO::Services::CACerts
     - OS::TripleO::Services::CephClient
@@ -115,7 +115,7 @@
 
 - name: R220Compute
   CountDefault: 1
-  HostnameFormatDefault: '%stackname%-compute-r220-%index%'
+  #HostnameFormatDefault: '%stackname%-compute-r220-%index%'
   ServicesDefault:
     - OS::TripleO::Services::CACerts
     - OS::TripleO::Services::CephClient
@@ -143,7 +143,7 @@
 
 - name: CephStorage
   CountDefault: 1
-  HostnameFormatDefault: 'cephstorage-%index%'
+  #HostnameFormatDefault: 'cephstorage-%index%'
   ServicesDefault:
     - OS::TripleO::Services::CACerts
     - OS::TripleO::Services::CephOSD

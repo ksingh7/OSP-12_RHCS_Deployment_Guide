@@ -1,0 +1,43 @@
+heat_template_version: pike
+
+description: Template file to add a swap partition to a node.
+
+parameters:
+  servers:
+    type: json
+  swap_partition_label:
+    type: string
+    description: Swap partition label
+    default: 'swap1'
+
+resources:
+  SwapConfig:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      config: |
+        #!/bin/bash
+        set -eux
+        swap_partition=$(realpath /dev/disk/by-label/$swap_partition_label)
+        if [ -f "$swap_partition" ]; then
+          swapon $swap_partition
+          echo "$swap_partition swap swap defaults 0 0" >> /etc/fstab
+        else
+          echo "$swap_partition needs to be a valid path"
+          echo "Check that $swap_partition_label is a valid partition label"
+        fi
+      inputs:
+        - name: swap_partition_label
+          description: Swap partition label
+          default: 'swap1'
+
+{% for role in roles %}
+  {{role.name}}SwapDeployment:
+    type: OS::Heat::SoftwareDeploymentGroup
+    properties:
+      config: {get_resource: SwapConfig}
+      servers: {get_param: [servers, {{role.name}}]}
+      input_values:
+        swap_partition_label: {get_param: swap_partition_label}
+      actions: ["CREATE"]
+{% endfor %}

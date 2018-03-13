@@ -1,0 +1,198 @@
+heat_template_version: pike
+
+description: >
+  OpenStack containerized Manila Share service
+
+parameters:
+  DockerManilaShareImage:
+    description: image
+    type: string
+  DockerManilaConfigImage:
+    description: image
+    type: string
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+
+resources:
+
+  MySQLClient:
+    type: ../../../puppet/services/database/mysql-client.yaml
+
+  ManilaBase:
+    type: ../../../puppet/services/pacemaker/manila-share.yaml
+    properties:
+      EndpointMap: {get_param: EndpointMap}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+outputs:
+  role_data:
+    description: Role data for the Manila Share role.
+    value:
+      service_name: {get_attr: [ManilaBase, role_data, service_name]}
+      config_settings:
+        map_merge:
+          - get_attr: [ManilaBase, role_data, config_settings]
+          - tripleo::profile::pacemaker::manila::share_bundle::manila_share_docker_image: &manila_share_image_pcmklatest
+              list_join:
+                - ':'
+                - - yaql:
+                      data: {get_param: DockerManilaShareImage}
+                      expression: $.data.rightSplit(separator => ":", maxSplits => 1)[0]
+                  - 'pcmklatest'
+            manila::share::manage_service: false
+            manila::share::enabled: false
+            manila::host: hostgroup
+      logging_source: {get_attr: [ManilaBase, role_data, logging_source]}
+      logging_groups: {get_attr: [ManilaBase, role_data, logging_groups]}
+      step_config: ""
+      service_config_settings: {get_attr: [ManilaBase, role_data, service_config_settings]}
+      # BEGIN DOCKER SETTINGS
+      puppet_config:
+        config_volume: manila
+        puppet_tags: manila_config,file,concat,file_line
+        step_config:
+          list_join:
+            - "\n"
+            - - {get_attr: [ManilaBase, role_data, step_config]}
+            - - {get_attr: [MySQLClient, role_data, step_config]}
+        config_image: {get_param: DockerManilaConfigImage}
+      kolla_config:
+        /var/lib/kolla/config_files/manila_share.json:
+          command: /usr/bin/manila-share --config-file /usr/share/manila/manila-dist.conf --config-file /etc/manila/manila.conf
+          config_files:
+            - source: "/var/lib/kolla/config_files/src/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+          permissions:
+            - path: /var/log/manila
+              owner: manila:manila
+              recurse: true
+      docker_config:
+        step_1:
+          manila_share_image_tag:
+            start_order: 1
+            detach: false
+            net: host
+            user: root
+            command:
+              - '/bin/bash'
+              - '-c'
+              - str_replace:
+                  template:
+                    "/usr/bin/docker tag 'MANILASHARE_IMAGE' 'MANILASHARE_IMAGE_PCMKLATEST'"
+                  params:
+                    MANILASHARE_IMAGE: {get_param: DockerManilaShareImage}
+                    MANILASHARE_IMAGE_PCMKLATEST: *manila_share_image_pcmklatest
+            image: {get_param: DockerManilaShareImage}
+            volumes:
+              - /etc/hosts:/etc/hosts:ro
+              - /etc/localtime:/etc/localtime:ro
+              - /dev/shm:/dev/shm:rw
+              - /etc/sysconfig/docker:/etc/sysconfig/docker:ro
+              - /usr/bin:/usr/bin:ro
+              - /var/run/docker.sock:/var/run/docker.sock:rw
+        step_3:
+          manila_share_init_logs:
+            start_order: 0
+            image: {get_param: DockerManilaShareImage}
+            privileged: false
+            user: root
+            volumes:
+              - /var/log/containers/manila:/var/log/manila
+            command: ['/bin/bash', '-c', 'chown -R manila:manila /var/log/manila']
+        step_5:
+          manila_share_init_bundle:
+            start_order: 0
+            detach: false
+            net: host
+            user: root
+            command:
+              - '/bin/bash'
+              - '-c'
+              - str_replace:
+                  template:
+                    list_join:
+                      - '; '
+                      - - "cp -a /tmp/puppet-etc/* /etc/puppet; echo '{\"step\": 5}' > /etc/puppet/hieradata/docker.json"
+                        - "FACTER_uuid=docker puppet apply --tags file_line,concat,augeas,TAGS --debug -v -e 'CONFIG'"
+                  params:
+                    TAGS: 'pacemaker::resource::bundle,pacemaker::property,pacemaker::constraint::location'
+                    CONFIG: 'include ::tripleo::profile::base::pacemaker;include ::tripleo::profile::pacemaker::manila::share_bundle'
+            image: {get_param: DockerManilaShareImage}
+            volumes:
+              - /etc/hosts:/etc/hosts:ro
+              - /etc/localtime:/etc/localtime:ro
+              - /etc/puppet:/tmp/puppet-etc:ro
+              - /usr/share/openstack-puppet/modules:/usr/share/openstack-puppet/modules:ro
+              - /etc/corosync/corosync.conf:/etc/corosync/corosync.conf:ro
+              - /dev/shm:/dev/shm:rw
+      host_prep_tasks:
+        - name: create persistent directories
+          file:
+            path: "{{ item }}"
+            state: directory
+          with_items:
+            - /var/log/containers/manila
+            - /var/lib/manila
+      upgrade_tasks:
+        - name: Stop and disable manila_share service
+          tags: step2
+          service: name=openstack-manila-share state=stopped enabled=no
+      update_tasks:
+        - name: Get docker Manila-Share image
+          set_fact:
+            docker_image: {get_param: DockerManilaShareImage}
+            docker_image_latest: *manila_share_image_pcmklatest
+          when: step == '2'
+        - name: Get previous Manila-Share image id
+          shell: "docker images | awk '/manila-share.* pcmklatest/{print $3}'"
+          register: manila_share_image_id
+        - block:
+            - name: Get a list of container using Manila-Share image
+              shell: "docker ps -q -f 'ancestor={{manila_share_image_id.stdout}}'"
+              register: manila-share_containers_to_destroy
+            # It will be recreated with the delpoy step.
+            - name: Remove any container using the same Manila-Share image
+              shell: "docker rm -fv {{item}}"
+              with_items: "{{ manila_share_containers_to_destroy.stdout_lines }}"
+            - name: Remove previous Manila-Share images
+              shell: "docker rmi -f {{manila_share_image_id.stdout}}"
+          when:
+            - step == '2'
+            - manila_share_image_id.stdout != ''
+        - name: Pull latest Manila-Share images
+          command: "docker pull {{docker_image}}"
+          when: step == "2"
+        - name: Retag pcmklatest to latest Manila-Share image
+          shell: "docker tag {{docker_image}} {{docker_image_latest}}"
+          when: step == "2"
+        # Got to check that pacemaker_is_active is working fine with bundle.
+        # TODO: pacemaker_is_active resource doesn't support bundle.

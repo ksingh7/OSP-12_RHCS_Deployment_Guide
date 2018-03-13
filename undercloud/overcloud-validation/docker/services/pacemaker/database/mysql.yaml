@@ -1,0 +1,345 @@
+heat_template_version: pike
+
+description: >
+  MySQL service deployment with pacemaker bundle
+
+parameters:
+  DockerMysqlImage:
+    description: image
+    type: string
+  DockerMysqlConfigImage:
+    description: The container image to use for the mysql config_volume
+    type: string
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  MysqlRootPassword:
+    type: string
+    hidden: true
+    default: ''
+  MysqlClustercheckPassword:
+    type: string
+    hidden: true
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EnableInternalTLS:
+    type: boolean
+    default: false
+  InternalTLSCAFile:
+    default: '/etc/ipa/ca.crt'
+    type: string
+    description: Specifies the default CA cert to use if TLS is used for
+                 services in the internal network.
+
+resources:
+
+  ContainersCommon:
+    type: ../../containers-common.yaml
+
+  MysqlPuppetBase:
+    type: ../../../../puppet/services/pacemaker/database/mysql.yaml
+    properties:
+      EndpointMap: {get_param: EndpointMap}
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+conditions:
+
+  internal_tls_enabled: {equals: [{get_param: EnableInternalTLS}, true]}
+
+outputs:
+  role_data:
+    description: Containerized service MySQL using composable services.
+    value:
+      service_name: {get_attr: [MysqlPuppetBase, role_data, service_name]}
+      config_settings:
+        map_merge:
+          - {get_attr: [MysqlPuppetBase, role_data, config_settings]}
+          - tripleo::profile::pacemaker::database::mysql_bundle::mysql_docker_image: &mysql_image_pcmklatest
+              list_join:
+                - ':'
+                - - yaql:
+                      data: {get_param: DockerMysqlImage}
+                      expression: $.data.rightSplit(separator => ":", maxSplits => 1)[0]
+                  - 'pcmklatest'
+            tripleo::profile::pacemaker::database::mysql_bundle::control_port: 3123
+            tripleo.mysql.firewall_rules:
+              '104 mysql galera-bundle':
+                dport:
+                  - 873
+                  - 3123
+                  - 3306
+                  - 4444
+                  - 4567
+                  - 4568
+                  - 9200
+            tripleo::profile::pacemaker::database::mysql_bundle::bind_address:
+              str_replace:
+                template:
+                  "%{hiera('fqdn_$NETWORK')}"
+                params:
+                  $NETWORK: {get_param: [ServiceNetMap, MysqlNetwork]}
+          -
+            if:
+            - internal_tls_enabled
+            -
+              tripleo::profile::pacemaker::database::mysql_bundle::ca_file:
+                get_param: InternalTLSCAFile
+            - {}
+      logging_source: {get_attr: [MysqlPuppetBase, role_data, logging_source]}
+      logging_groups: {get_attr: [MysqlPuppetBase, role_data, logging_groups]}
+      step_config: ""
+      # BEGIN DOCKER SETTINGS #
+      puppet_config:
+        config_volume: mysql
+        puppet_tags: file # set this even though file is the default
+        step_config:
+          list_join:
+            - "\n"
+            - - "['Mysql_datadir', 'Mysql_user', 'Mysql_database', 'Mysql_grant', 'Mysql_plugin'].each |String $val| { noop_resource($val) }"
+              - "exec {'wait-for-settle': command => '/bin/true' }"
+              - "include ::tripleo::profile::pacemaker::database::mysql_bundle"
+        config_image: {get_param: DockerMysqlConfigImage}
+      kolla_config:
+        /var/lib/kolla/config_files/mysql.json:
+          command: /usr/sbin/pacemaker_remoted
+          config_files:
+            - dest: /etc/libqb/force-filesystem-sockets
+              source: /dev/null
+              owner: root
+              perm: '0644'
+            - source: "/var/lib/kolla/config_files/src/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+            - source: "/var/lib/kolla/config_files/src-tls/*"
+              dest: "/"
+              merge: true
+              optional: true
+              preserve_properties: true
+          permissions:
+            - path: /etc/pki/tls/certs/mysql.crt
+              owner: mysql:mysql
+              perm: '0600'
+              optional: true
+            - path: /etc/pki/tls/private/mysql.key
+              owner: mysql:mysql
+              perm: '0600'
+              optional: true
+      docker_config:
+        step_1:
+          mysql_data_ownership:
+            start_order: 0
+            detach: false
+            image: {get_param: DockerMysqlImage}
+            net: host
+            user: root
+            # Kolla does only non-recursive chown
+            command: ['chown', '-R', 'mysql:', '/var/lib/mysql']
+            volumes:
+              - /var/lib/mysql:/var/lib/mysql
+          mysql_bootstrap:
+            start_order: 1
+            detach: false
+            image: {get_param: DockerMysqlImage}
+            net: host
+            user: root
+            # Kolla bootstraps aren't idempotent, explicitly checking if bootstrap was done
+            command:
+              - 'bash'
+              - '-ecx'
+              -
+                list_join:
+                  - "\n"
+                  - - 'if [ -e /var/lib/mysql/mysql ]; then exit 0; fi'
+                    - 'echo -e "\n[mysqld]\nwsrep_provider=none" >> /etc/my.cnf'
+                    - 'sudo -u mysql -E kolla_start'
+                    - 'mysqld_safe --skip-networking --wsrep-on=OFF &'
+                    - 'timeout ${DB_MAX_TIMEOUT} /bin/bash -c ''until mysqladmin -uroot -p"${DB_ROOT_PASSWORD}" ping 2>/dev/null; do sleep 1; done'''
+                    - 'mysql -uroot -p"${DB_ROOT_PASSWORD}" -e "CREATE USER ''clustercheck''@''localhost'' IDENTIFIED BY ''${DB_CLUSTERCHECK_PASSWORD}'';"'
+                    - 'mysql -uroot -p"${DB_ROOT_PASSWORD}" -e "GRANT PROCESS ON *.* TO ''clustercheck''@''localhost'' WITH GRANT OPTION;"'
+                    - 'timeout ${DB_MAX_TIMEOUT} mysqladmin -uroot -p"${DB_ROOT_PASSWORD}" shutdown'
+            volumes: &mysql_volumes
+              list_concat:
+                - {get_attr: [ContainersCommon, volumes]}
+                -
+                  - /var/lib/kolla/config_files/mysql.json:/var/lib/kolla/config_files/config.json
+                  - /var/lib/config-data/puppet-generated/mysql/:/var/lib/kolla/config_files/src:ro
+                  - /var/lib/mysql:/var/lib/mysql
+            environment:
+              - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+              - KOLLA_BOOTSTRAP=True
+              # NOTE(mandre) skip wsrep cluster status check
+              - KOLLA_KUBERNETES=True
+              - DB_MAX_TIMEOUT=60
+              -
+                list_join:
+                  - '='
+                  - - 'DB_CLUSTERCHECK_PASSWORD'
+                    - {get_param: MysqlClustercheckPassword}
+              -
+                list_join:
+                  - '='
+                  - - 'DB_ROOT_PASSWORD'
+                    -
+                      yaql:
+                        expression: $.data.passwords.where($ != '').first()
+                        data:
+                          passwords:
+                            - {get_param: MysqlRootPassword}
+                            - {get_param: [DefaultPasswords, mysql_root_password]}
+          mysql_image_tag:
+            start_order: 2
+            detach: false
+            net: host
+            user: root
+            command:
+              - '/bin/bash'
+              - '-c'
+              - str_replace:
+                  template:
+                    "/usr/bin/docker tag 'MYSQL_IMAGE' 'MYSQL_IMAGE_PCMKLATEST'"
+                  params:
+                    MYSQL_IMAGE: {get_param: DockerMysqlImage}
+                    MYSQL_IMAGE_PCMKLATEST: *mysql_image_pcmklatest
+            image: {get_param: DockerMysqlImage}
+            volumes:
+              - /etc/hosts:/etc/hosts:ro
+              - /etc/localtime:/etc/localtime:ro
+              - /dev/shm:/dev/shm:rw
+              - /etc/sysconfig/docker:/etc/sysconfig/docker:ro
+              - /usr/bin:/usr/bin:ro
+              - /var/run/docker.sock:/var/run/docker.sock:rw
+        step_2:
+          mysql_init_bundle:
+            start_order: 1
+            detach: false
+            net: host
+            user: root
+            command:
+              - '/bin/bash'
+              - '-c'
+              - str_replace:
+                  template:
+                    list_join:
+                      - '; '
+                      - - "cp -a /tmp/puppet-etc/* /etc/puppet; echo '{\"step\": 2}' > /etc/puppet/hieradata/docker.json"
+                        - "FACTER_uuid=docker puppet apply --tags file,file_line,concat,augeas,TAGS -v -e 'CONFIG'"
+                  params:
+                    TAGS: 'pacemaker::resource::bundle,pacemaker::property,pacemaker::resource::ocf,pacemaker::constraint::order,pacemaker::constraint::colocation,galera_ready,mysql_database,mysql_grant,mysql_user'
+                    CONFIG: 'include ::tripleo::profile::base::pacemaker;include ::tripleo::profile::pacemaker::database::mysql_bundle'
+            image: {get_param: DockerMysqlImage}
+            volumes:
+              - /etc/hosts:/etc/hosts:ro
+              - /etc/localtime:/etc/localtime:ro
+              - /etc/puppet:/tmp/puppet-etc:ro
+              - /usr/share/openstack-puppet/modules:/usr/share/openstack-puppet/modules:ro
+              - /etc/corosync/corosync.conf:/etc/corosync/corosync.conf:ro
+              - /dev/shm:/dev/shm:rw
+              - /var/lib/mysql:/var/lib/mysql:rw
+      host_prep_tasks:
+        - name: create /var/lib/mysql
+          file:
+            path: /var/lib/mysql
+            state: directory
+      metadata_settings:
+        get_attr: [MysqlPuppetBase, role_data, metadata_settings]
+      upgrade_tasks:
+        - name: get bootstrap nodeid
+          tags: common
+          command: hiera -c /etc/puppet/hiera.yaml bootstrap_nodeid
+          register: bootstrap_node
+        - name: set is_bootstrap_node fact
+          tags: common
+          set_fact: is_bootstrap_node={{bootstrap_node.stdout|lower == ansible_hostname|lower}}
+        - name: Check cluster resource status
+          tags: step2
+          pacemaker_resource:
+            resource: galera
+            state: master
+            check_mode: true
+          ignore_errors: true
+          register: galera_res
+        - name: Disable the galera cluster resource
+          tags: step2
+          pacemaker_resource:
+            resource: galera
+            state: disable
+            wait_for_resource: true
+          register: output
+          retries: 5
+          until: output.rc == 0
+          when: is_bootstrap_node and galera_res|succeeded
+        - name: Delete the stopped galera cluster resource.
+          tags: step2
+          pacemaker_resource:
+            resource: galera
+            state: delete
+            wait_for_resource: true
+          register: output
+          retries: 5
+          until: output.rc == 0
+          when: is_bootstrap_node and galera_res|succeeded
+        - name: Disable mysql service
+          tags: step2
+          service: name=mariadb enabled=no
+        - name: Remove clustercheck service from xinetd
+          tags: step2
+          file: state=absent path=/etc/xinetd.d/galera-monitor
+        - name: Restart xinetd service after clustercheck removal
+          tags: step2
+          service: name=xinetd state=restarted
+      update_tasks:
+        - name: Get docker Mariadb image
+          set_fact:
+            docker_image: {get_param: DockerMysqlImage}
+            docker_image_latest: *mysql_image_pcmklatest
+          when: step == '2'
+        - name: Get previous Mariadb image id
+          shell: "docker images | awk '/mariadb.* pcmklatest/{print $3}'"
+          register: mariadb_image_id
+        - block:
+            - name: Get a list of container using Mariadb image
+              shell: "docker ps -q -f 'ancestor={{mariadb_image_id.stdout}}'"
+              register: mariadb_containers_to_destroy
+            # It will be recreated with the delpoy step.
+            - name: Remove any container using the same Mariadb image
+              shell: "docker rm -fv {{item}}"
+              with_items: "{{ mariadb_containers_to_destroy.stdout_lines }}"
+            - name: Remove previous Mariadb images
+              shell: "docker rmi -f {{mariadb_image_id.stdout}}"
+          when:
+            - step == '2'
+            - mariadb_image_id.stdout != ''
+        - name: Pull latest Mariadb images
+          command: "docker pull {{docker_image}}"
+          when: step == "2"
+        - name: Retag pcmklatest to latest Mariadb image
+          shell: "docker tag {{docker_image}} {{docker_image_latest}}"
+          when: step == "2"
+        # Got to check that pacemaker_is_active is working fine with bundle.
+        # TODO: pacemaker_is_active resource doesn't support bundle.

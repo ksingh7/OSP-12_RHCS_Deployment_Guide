@@ -1,0 +1,232 @@
+heat_template_version: pike
+
+description: >
+  MySQL service deployment using puppet
+
+parameters:
+  DockerMysqlImage:
+    description: image
+    type: string
+  DockerMysqlConfigImage:
+    description: The container image to use for the mysql config_volume
+    type: string
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  MysqlRootPassword:
+    type: string
+    hidden: true
+    default: ''
+  EnableInternalTLS:
+    type: boolean
+    default: false
+  InternalTLSCAFile:
+    default: '/etc/ipa/ca.crt'
+    type: string
+    description: Specifies the default CA cert to use if TLS is used for
+                 services in the internal network.
+
+conditions:
+
+  internal_tls_enabled: {equals: [{get_param: EnableInternalTLS}, true]}
+
+resources:
+
+  MysqlPuppetBase:
+    type: ../../../puppet/services/database/mysql.yaml
+    properties:
+      EndpointMap: {get_param: EndpointMap}
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+outputs:
+  role_data:
+    description: Containerized service MySQL using composable services.
+    value:
+      service_name: {get_attr: [MysqlPuppetBase, role_data, service_name]}
+      config_settings:
+        map_merge:
+          - {get_attr: [MysqlPuppetBase, role_data, config_settings]}
+          # Set PID file to what kolla mariadb bootstrap script expects
+          - tripleo::profile::base::database::mysql::mysql_server_options:
+              mysqld:
+                pid-file: /var/lib/mysql/mariadb.pid
+              mysqld_safe:
+                pid-file: /var/lib/mysql/mariadb.pid
+      logging_source: {get_attr: [MysqlPuppetBase, role_data, logging_source]}
+      logging_groups: {get_attr: [MysqlPuppetBase, role_data, logging_groups]}
+      step_config: &step_config
+        list_join:
+          - "\n"
+          - - "['Mysql_datadir', 'Mysql_user', 'Mysql_database', 'Mysql_grant', 'Mysql_plugin'].each |String $val| { noop_resource($val) }"
+            - {get_attr: [MysqlPuppetBase, role_data, step_config]}
+      # BEGIN DOCKER SETTINGS #
+      puppet_config:
+        config_volume: mysql
+        puppet_tags: file # set this even though file is the default
+        step_config: *step_config
+        config_image: &mysql_config_image {get_param: DockerMysqlConfigImage}
+      kolla_config:
+        /var/lib/kolla/config_files/mysql.json:
+          command: /usr/bin/mysqld_safe
+          config_files:
+            - source: "/var/lib/kolla/config_files/src/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+            - source: "/var/lib/kolla/config_files/src-tls/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+              optional: true
+          permissions:
+            - path: /var/lib/mysql
+              owner: mysql:mysql
+              recurse: true
+            - path: /etc/pki/tls/certs/mysql.crt
+              owner: mysql:mysql
+              optional: true
+            - path: /etc/pki/tls/private/mysql.key
+              owner: mysql:mysql
+              optional: true
+      docker_config:
+        # Kolla_bootstrap runs before permissions set by kolla_config
+        step_1:
+          mysql_init_logs:
+            image: &mysql_image {get_param: DockerMysqlImage}
+            privileged: false
+            user: root
+            volumes:
+              - /var/log/containers/mysql:/var/log/mariadb
+            command: ['/bin/bash', '-c', 'chown -R mysql:mysql /var/log/mariadb']
+        step_2:
+          mysql_bootstrap:
+            start_order: 1
+            detach: false
+            image: *mysql_image
+            net: host
+            user: root
+            # Kolla bootstraps aren't idempotent, explicitly checking if bootstrap was done
+            command:
+              - 'bash'
+              - '-ecx'
+              -
+                list_join:
+                  - "\n"
+                  - - 'if [ -e /var/lib/mysql/mysql ]; then exit 0; fi'
+                    - 'echo -e "\n[mysqld]\nwsrep_provider=none" >> /etc/my.cnf'
+                    - 'sudo -u mysql -E kolla_start'
+                    - 'mysqld_safe --skip-networking --wsrep-on=OFF &'
+                    - 'timeout ${DB_MAX_TIMEOUT} /bin/bash -c ''until mysqladmin -uroot -p"${DB_ROOT_PASSWORD}" ping 2>/dev/null; do sleep 1; done'''
+                    - 'mysql -uroot -p"${DB_ROOT_PASSWORD}" -e "CREATE USER ''mysql''@''localhost'';"'
+                    - 'mysql -uroot -p"${DB_ROOT_PASSWORD}" -e "REVOKE ALL PRIVILEGES, GRANT OPTION FROM ''mysql''@''localhost'';"'
+                    - 'timeout ${DB_MAX_TIMEOUT} mysqladmin -uroot -p"${DB_ROOT_PASSWORD}" shutdown'
+            volumes: &mysql_volumes
+              list_concat:
+              -
+                - /var/lib/kolla/config_files/mysql.json:/var/lib/kolla/config_files/config.json
+                - /var/lib/config-data/puppet-generated/mysql/:/var/lib/kolla/config_files/src:ro
+                - /etc/localtime:/etc/localtime:ro
+                - /etc/hosts:/etc/hosts:ro
+                - /var/lib/mysql:/var/lib/mysql
+                - /var/log/containers/mysql:/var/log/mariadb
+              - if:
+                - internal_tls_enabled
+                -
+                  - list_join:
+                    - ':'
+                    - - {get_param: InternalTLSCAFile}
+                      - {get_param: InternalTLSCAFile}
+                      - 'ro'
+                  - /etc/pki/tls/certs/mysql.crt:/var/lib/kolla/config_files/src-tls/etc/pki/tls/certs/mysql.crt:ro
+                  - /etc/pki/tls/private/mysql.key:/var/lib/kolla/config_files/src-tls/etc/pki/tls/private/mysql.key:ro
+                - null
+            environment:
+              - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+              - KOLLA_BOOTSTRAP=True
+              # NOTE(mandre) skip wsrep cluster status check
+              - KOLLA_KUBERNETES=True
+              - DB_MAX_TIMEOUT=60
+              -
+                list_join:
+                  - '='
+                  - - 'DB_ROOT_PASSWORD'
+                    -
+                      yaql:
+                        expression: $.data.passwords.where($ != '').first()
+                        data:
+                          passwords:
+                            - {get_param: MysqlRootPassword}
+                            - {get_param: [DefaultPasswords, mysql_root_password]}
+          mysql:
+            start_order: 2
+            image: *mysql_image
+            restart: always
+            net: host
+            volumes: *mysql_volumes
+            environment:
+              - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+      docker_puppet_tasks:
+        # MySQL database initialization occurs only on single node
+        step_2:
+          config_volume: 'mysql_init_tasks'
+          puppet_tags: 'mysql_database,mysql_grant,mysql_user'
+          step_config: 'include ::tripleo::profile::base::database::mysql'
+          config_image: *mysql_config_image
+          volumes:
+            list_concat:
+            -
+              - /var/lib/mysql:/var/lib/mysql/:ro
+              - /var/log/containers/mysql:/var/log/mariadb
+              - /var/lib/config-data/mysql/root:/root:ro #provides .my.cnf
+            - if:
+              - internal_tls_enabled
+              -
+                - list_join:
+                  - ':'
+                  - - {get_param: InternalTLSCAFile}
+                    - {get_param: InternalTLSCAFile}
+                    - 'ro'
+                - /etc/pki/tls/certs/mysql.crt:/var/lib/kolla/config_files/src-tls/etc/pki/tls/certs/mysql.crt:ro
+                - /etc/pki/tls/private/mysql.key:/var/lib/kolla/config_files/src-tls/etc/pki/tls/private/mysql.key:ro
+              - null
+      metadata_settings:
+        get_attr: [MysqlPuppetBase, role_data, metadata_settings]
+      host_prep_tasks:
+        - name: create persistent directories
+          file:
+            path: "{{ item }}"
+            state: directory
+          with_items:
+            - /var/log/containers/mysql
+            - /var/lib/mysql
+      upgrade_tasks:
+        - name: Stop and disable mysql service
+          tags: step2
+          service: name=mariadb state=stopped enabled=no

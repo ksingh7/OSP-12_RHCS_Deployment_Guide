@@ -1,0 +1,807 @@
+{#- ## Some variables are set to enable rendering backwards compatible templates #}
+{#- ## where a few parameter/resource names don't match the expected pattern #}
+{#- ## FIXME: we need some way to deprecate the old inconsistent parameters #}
+{%- set server_resource_name = role.deprecated_server_resource_name|default(role.name) -%}
+heat_template_version: pike
+description: 'OpenStack {{role.name}} node configured by Puppet'
+parameters:
+{%- set default_flavor_name = 'baremetal' %}
+{%- if role.deprecated_param_flavor is defined %}
+  {{role.deprecated_param_flavor}}:
+    description: DEPRECATED Use Overcloud{{role.name}}Flavor instead.
+    default: {{default_flavor_name}}
+    type: string
+{%- endif %}
+  Overcloud{{role.name}}Flavor:
+    description: Flavor for the {{role.name}} node.
+    default: {{default_flavor_name}}
+    type: string
+{%- if role.disable_constraints is not defined %}
+    constraints:
+      - custom_constraint: nova.flavor
+{%- endif %}
+{%- set default_image_name = 'overcloud-full' %}
+{%- if role.deprecated_param_image is defined %}
+  {{role.deprecated_param_image}}:
+    type: string
+    default: {{default_image_name}}
+    description: DEPRECATED Use {{role.name}}Image instead
+{%- endif %}
+  {{role.name}}Image:
+    type: string
+    default: {{default_image_name}}
+    description: The disk image file to use for the role.
+{%- if role.disable_constraints is not defined %}
+    constraints:
+      - custom_constraint: glance.image
+{%- endif %}
+  ImageUpdatePolicy:
+    default: 'REBUILD_PRESERVE_EPHEMERAL'
+    description: What policy to use when reconstructing instances. REBUILD for rebuilds, REBUILD_PRESERVE_EPHEMERAL to preserve /mnt.
+    type: string
+  KeyName:
+    description: Name of an existing Nova key pair to enable SSH access to the instances
+    type: string
+    default: default
+{%- if role.disable_constraints is not defined %}
+    constraints:
+      - custom_constraint: nova.keypair
+{%- endif %}
+  NeutronPhysicalBridge:
+    default: 'br-ex'
+    description: An OVS bridge to create for accessing external networks.
+    type: string
+  NeutronPublicInterface:
+    default: nic1
+    description: Which interface to add to the NeutronPhysicalBridge.
+    type: string
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  UpdateIdentifier:
+    default: ''
+    type: string
+    description: >
+      Setting to a previously unused value during stack-update will trigger
+      package update on all nodes
+  Hostname:
+    type: string
+    default: '' # Defaults to Heat created hostname
+  HostnameMap:
+    type: json
+    default: {}
+    description: Optional mapping to override hostnames
+  ExtraConfig:
+    default: {}
+    description: |
+      Additional hiera configuration to inject into the cluster. Note
+      that {{role.name}}ExtraConfig takes precedence over ExtraConfig.
+    type: json
+  {{role.name}}ExtraConfig:
+    default: {}
+    description: |
+      Role specific additional hiera configuration to inject into the cluster.
+    type: json
+{%- if role.deprecated_param_extraconfig is defined %}
+  {{role.deprecated_param_extraconfig}}:
+    default: {}
+    description: |
+      DEPRECATED use {{role.name}}ExtraConfig instead
+    type: json
+{%- endif %}
+  {{role.name}}IPs:
+    default: {}
+    type: json
+{%- if role.deprecated_param_ips is defined %}
+  {{role.deprecated_param_ips}}:
+    default: {}
+    description: DEPRECATED - use {{role.name}}IPs instead
+    type: json
+{%- endif %}
+  {{role.name}}NetworkDeploymentActions:
+    type: comma_delimited_list
+    description: >
+      Heat action when to apply network configuration changes
+    default: []
+  NetworkDeploymentActions:
+    type: comma_delimited_list
+    description: >
+      Heat action when to apply network configuration changes
+    default: ['CREATE']
+  SoftwareConfigTransport:
+    default: POLL_SERVER_CFN
+    description: |
+      How the server should receive the metadata required for software configuration.
+    type: string
+    constraints:
+    - allowed_values: [POLL_SERVER_CFN, POLL_SERVER_HEAT, POLL_TEMP_URL, ZAQAR_MESSAGE]
+  CloudDomain:
+    default: 'localdomain'
+    type: string
+    description: >
+      The DNS domain used for the hosts. This must match the
+      overcloud_domain_name configured on the undercloud.
+  {{role.name}}ServerMetadata:
+    default: {}
+    description: >
+      Extra properties or metadata passed to Nova for the created nodes in
+      the overcloud. It's accessible via the Nova metadata API. This option is
+      role-specific and is merged with the values given to the ServerMetadata
+      parameter.
+    type: json
+{%- if role.deprecated_param_metadata is defined %}
+  {{role.deprecated_param_metadata}}:
+    default: {}
+    description: DEPRECATED - use {{role.name}}ServerMetadata instead
+    type: json
+{%- endif %}
+  ServerMetadata:
+    default: {}
+    description: >
+      Extra properties or metadata passed to Nova for the created nodes in
+      the overcloud. It's accessible via the Nova metadata API. This applies to
+      all roles and is merged with a role-specific metadata parameter.
+    type: json
+  {{role.name}}SchedulerHints:
+    type: json
+    description: Optional scheduler hints to pass to nova
+    default: {}
+  NodeIndex:
+    type: number
+    default: 0
+  ServiceConfigSettings:
+    type: json
+    default: {}
+  ServiceNames:
+    type: comma_delimited_list
+    default: []
+  MonitoringSubscriptions:
+    type: comma_delimited_list
+    default: []
+  ServiceMetadataSettings:
+    type: json
+    default: {}
+  ConfigCommand:
+    type: string
+    description: Command which will be run whenever configuration data changes
+    default: os-refresh-config --timeout 14400
+  ConfigCollectSplay:
+    type: number
+    default: 30
+    description: |
+      Maximum amount of time to possibly to delay configuation collection
+      polling. Defaults to 30 seconds. Set to 0 to disable it which will cause
+      the configuration collection to occur as soon as the collection process
+      starts.  This setting is used to prevent the configuration collection
+      processes from polling all at the exact same time.
+  LoggingSources:
+    type: json
+    default: []
+  LoggingGroups:
+    type: comma_delimited_list
+    default: []
+  UpgradeInitCommand:
+    type: string
+    description: |
+      Command or script snippet to run on all overcloud nodes to
+      initialize the upgrade process. E.g. a repository switch.
+    default: ''
+  UpgradeInitCommonCommand:
+    type: string
+    description: |
+      Common commands required by the upgrades process. This should not
+      normally be modified by the operator and is set and unset in the
+      major-upgrade-composable-steps.yaml and major-upgrade-converge.yaml
+      environment files.
+    default: ''
+  DeploymentServerBlacklistDict:
+    default: {}
+    type: json
+    description: >
+      Map of server hostnames to blacklist from any triggered
+      deployments. If the value is 1, the server will be blacklisted. This
+      parameter is generated from the parent template.
+  RoleParameters:
+    type: json
+    description: Parameters specific to the role
+    default: {}
+  DeploymentSwiftDataMap:
+    type: json
+    description: |
+      Map of servers to Swift container and object for storing deployment data.
+      The keys are the Heat assigned hostnames, and the value is a map of the
+      container/object name in Swift. Example value:
+        overcloud-controller-0:
+          container: overcloud-controller
+          object: 0
+        overcloud-controller-1:
+          container: overcloud-controller
+          object: 1
+        overcloud-controller-2:
+          container: overcloud-controller
+          object: 2
+        overcloud-novacompute-0:
+          container: overcloud-compute
+          object: 0
+    default: {}
+
+{% if role.uses_deprecated_params is defined %}
+parameter_groups:
+- label: deprecated
+  description: Do not use deprecated params, they will be removed.
+  parameters:
+{%- for property in role %}
+{%- if property.startswith('deprecated_param_') and not role[property].endswith('SchedulerHints') %}
+  - {{role[property]}}
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+
+conditions:
+  server_not_blacklisted:
+    not:
+      equals:
+        - {get_param: [DeploymentServerBlacklistDict, {get_param: Hostname}]}
+        - 1
+  deployment_swift_data_map_unset:
+    equals:
+      - get_param:
+          - DeploymentSwiftDataMap
+          - {get_param: Hostname}
+      - ""
+{%- if role.deprecated_param_image is defined %}
+  deprecated_param_image_set:
+    not:
+      equals:
+        - {get_param: {{role.deprecated_param_image}}}
+        - {{default_image_name}}
+{%- endif %}
+{%- if role.deprecated_param_flavor is defined %}
+  deprecated_param_flavor_set:
+    not:
+      equals:
+        - {get_param: {{role.deprecated_param_flavor}}}
+        - {{default_flavor_name}}
+{%- endif %}
+  role_network_deployment_actions_exists:
+    not:
+      equals:
+        - {get_param: {{role.name}}NetworkDeploymentActions}
+        - []
+
+resources:
+  {{server_resource_name}}:
+    type: OS::TripleO::{{role.name}}Server
+    metadata:
+      os-collect-config:
+        command: {get_param: ConfigCommand}
+        splay: {get_param: ConfigCollectSplay}
+    properties:
+      image:
+{%- if role.deprecated_param_image is defined %}
+        if:
+          - deprecated_param_image_set
+          - {get_param: {{role.deprecated_param_image}}}
+          - {get_param: {{role.name}}Image}
+{%- else %}
+        get_param: {{role.name}}Image
+{%- endif %}
+      image_update_policy: {get_param: ImageUpdatePolicy}
+      flavor: 
+{%- if role.deprecated_param_flavor is defined %}
+        if:
+          - deprecated_param_flavor_set
+          - {get_param: {{role.deprecated_param_flavor}}}
+          - {get_param: Overcloud{{role.name}}Flavor}
+{%- else %}
+        get_param: Overcloud{{role.name}}Flavor
+{%- endif %}
+      key_name: {get_param: KeyName}
+      networks:
+        - network: ctlplane
+      user_data_format: SOFTWARE_CONFIG
+      user_data: {get_resource: UserData}
+      name:
+        str_replace:
+            template: {get_param: Hostname}
+            params: {get_param: HostnameMap}
+      software_config_transport: {get_param: SoftwareConfigTransport}
+      metadata:
+        map_merge:
+          - {get_param: ServerMetadata}
+{%- if role.deprecated_param_metadata is defined %}
+          - {get_param: {{role.deprecated_param_metadata}}}
+{%- endif %}
+          - {get_param: {{role.name}}ServerMetadata}
+          - {get_param: ServiceMetadataSettings}
+      scheduler_hints: {get_param: {{role.name}}SchedulerHints}
+      deployment_swift_data:
+        if:
+          - deployment_swift_data_map_unset
+          - {}
+          - {get_param: [DeploymentSwiftDataMap,
+                         {get_param: Hostname}]}
+
+  # Combine the NodeAdminUserData and NodeUserData mime archives
+  UserData:
+    type: OS::Heat::MultipartMime
+    properties:
+      parts:
+      - config: {get_resource: NodeAdminUserData}
+        type: multipart
+      - config: {get_resource: NodeUserData}
+        type: multipart
+      - config: {get_resource: RoleUserData}
+        type: multipart
+
+  # Creates the "heat-admin" user if configured via the environment
+  # Should return a OS::Heat::MultipartMime reference via OS::stack_id
+  NodeAdminUserData:
+    type: OS::TripleO::NodeAdminUserData
+
+  # For optional operator additional userdata
+  # Should return a OS::Heat::MultipartMime reference via OS::stack_id
+  NodeUserData:
+    type: OS::TripleO::NodeUserData
+
+  # For optional operator role-specific userdata
+  # Should return a OS::Heat::MultipartMime reference via OS::stack_id
+  RoleUserData:
+    type: OS::TripleO::{{role.name}}::NodeUserData
+
+  {%- for network in networks %}
+  {{network.name}}Port:
+    type: OS::TripleO::{{role.name}}::Ports::{{network.name}}Port
+    properties:
+      ControlPlaneIP: {get_attr: [{{server_resource_name}}, networks, ctlplane, 0]}
+      IPPool:
+        map_merge:
+{%- if role.deprecated_param_ips is defined %}
+          - {get_param: {{role.deprecated_param_ips}}}
+{%- endif %}
+          - {get_param: {{role.name}}IPs}
+      NodeIndex: {get_param: NodeIndex}
+  {%- endfor %}
+
+  NetworkConfig:
+    type: OS::TripleO::{{role.name}}::Net::SoftwareConfig
+    properties:
+      ControlPlaneIp: {get_attr: [{{server_resource_name}}, networks, ctlplane, 0]}
+  {%- for network in networks %}
+      {{network.name}}IpSubnet: {get_attr: [{{network.name}}Port, ip_subnet]}
+  {%- endfor %}
+
+  NetIpMap:
+    type: OS::TripleO::Network::Ports::NetIpMap
+    properties:
+      ControlPlaneIp: {get_attr: [{{server_resource_name}}, networks, ctlplane, 0]}
+  {%- for network in networks %}
+      {{network.name}}Ip: {get_attr: [{{network.name}}Port, ip_address]}
+      {{network.name}}IpSubnet: {get_attr: [{{network.name}}Port, ip_subnet]}
+      {{network.name}}IpUri: {get_attr: [{{network.name}}Port, ip_address_uri]}
+  {%- endfor %}
+
+  NetHostMap:
+    type: OS::Heat::Value
+    properties:
+      type: json
+      value:
+        external:
+          fqdn:
+            list_join:
+            - '.'
+            - - {get_attr: [{{server_resource_name}}, name]}
+              - external
+              - {get_param: CloudDomain}
+          short:
+            list_join:
+            - '.'
+            - - {get_attr: [{{server_resource_name}}, name]}
+              - external
+        internal_api:
+          fqdn:
+            list_join:
+            - '.'
+            - - {get_attr: [{{server_resource_name}}, name]}
+              - internalapi
+              - {get_param: CloudDomain}
+          short:
+            list_join:
+            - '.'
+            - - {get_attr: [{{server_resource_name}}, name]}
+              - internalapi
+        storage:
+          fqdn:
+            list_join:
+            - '.'
+            - - {get_attr: [{{server_resource_name}}, name]}
+              - storage
+              - {get_param: CloudDomain}
+          short:
+            list_join:
+            - '.'
+            - - {get_attr: [{{server_resource_name}}, name]}
+              - storage
+        storage_mgmt:
+          fqdn:
+            list_join:
+            - '.'
+            - - {get_attr: [{{server_resource_name}}, name]}
+              - storagemgmt
+              - {get_param: CloudDomain}
+          short:
+            list_join:
+            - '.'
+            - - {get_attr: [{{server_resource_name}}, name]}
+              - storagemgmt
+        tenant:
+          fqdn:
+            list_join:
+            - '.'
+            - - {get_attr: [{{server_resource_name}}, name]}
+              - tenant
+              - {get_param: CloudDomain}
+          short:
+            list_join:
+            - '.'
+            - - {get_attr: [{{server_resource_name}}, name]}
+              - tenant
+        management:
+          fqdn:
+            list_join:
+            - '.'
+            - - {get_attr: [{{server_resource_name}}, name]}
+              - management
+              - {get_param: CloudDomain}
+          short:
+            list_join:
+            - '.'
+            - - {get_attr: [{{server_resource_name}}, name]}
+              - management
+        ctlplane:
+          fqdn:
+            list_join:
+            - '.'
+            - - {get_attr: [{{server_resource_name}}, name]}
+              - ctlplane
+              - {get_param: CloudDomain}
+          short:
+            list_join:
+            - '.'
+            - - {get_attr: [{{server_resource_name}}, name]}
+              - ctlplane
+        canonical:
+          fqdn:
+            list_join:
+            - '.'
+            - - {get_attr: [{{server_resource_name}}, name]}
+              - {get_param: CloudDomain}
+          short:
+            - {get_attr: [{{server_resource_name}}, name]}
+
+  PreNetworkConfig:
+    type: OS::TripleO::{{role.name}}::PreNetworkConfig
+    properties:
+      server: {get_resource: {{server_resource_name}}}
+      RoleParameters: {get_param: RoleParameters}
+      ServiceNames: {get_param: ServiceNames}
+      deployment_actions: {get_attr: [DeploymentActions, value]}
+
+  NetworkDeployment:
+    type: OS::TripleO::SoftwareDeployment
+    depends_on: PreNetworkConfig
+    properties:
+      name: NetworkDeployment
+      config: {get_resource: NetworkConfig}
+      server: {get_resource: {{server_resource_name}}}
+      actions: {get_param: NetworkDeploymentActions}
+      input_values:
+        bridge_name: {get_param: NeutronPhysicalBridge}
+        interface_name: {get_param: NeutronPublicInterface}
+      actions:
+        if:
+          - server_not_blacklisted
+          - if:
+            - role_network_deployment_actions_exists
+            - {get_param: {{role.name}}NetworkDeploymentActions}
+            - {get_param: NetworkDeploymentActions}
+          - []
+
+  {{server_resource_name}}UpgradeInitConfig:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      config:
+        list_join:
+        - ''
+        - - "#!/bin/bash\n\n"
+          - "if [[ -f /etc/resolv.conf.save ]] ; then rm /etc/resolv.conf.save; fi\n\n"
+          - get_param: UpgradeInitCommand
+          - get_param: UpgradeInitCommonCommand
+
+  # Note we may be able to make this conditional on UpgradeInitCommandNotEmpty
+  # but https://bugs.launchpad.net/heat/+bug/1649900 needs fixing first
+  {{server_resource_name}}UpgradeInitDeployment:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: NetworkDeployment
+    properties:
+      name: {{server_resource_name}}UpgradeInitDeployment
+      server: {get_resource: {{server_resource_name}}}
+      config: {get_resource: {{server_resource_name}}UpgradeInitConfig}
+      actions:
+        if:
+          - server_not_blacklisted
+          - ['CREATE', 'UPDATE']
+          - []
+
+  {{server_resource_name}}Deployment:
+    type: OS::Heat::StructuredDeployment
+    depends_on: {{server_resource_name}}UpgradeInitDeployment
+    properties:
+      name: {{server_resource_name}}Deployment
+      config: {get_resource: {{server_resource_name}}Config}
+      server: {get_resource: {{server_resource_name}}}
+      input_values:
+        enable_package_upgrade: {get_attr: [UpdateDeployment, update_managed_packages]}
+      actions:
+        if:
+          - server_not_blacklisted
+          - ['CREATE', 'UPDATE']
+          - []
+
+  {{server_resource_name}}Config:
+    type: OS::Heat::StructuredConfig
+    properties:
+      group: hiera
+      config:
+        hierarchy:
+          - '"%{::uuid}"'
+          - heat_config_%{::deploy_config_name}
+          - config_step
+          - {{role.name.lower()}}_extraconfig
+          - extraconfig
+          - service_names
+          - service_configs
+          - {{role.name.lower()}}
+          - bootstrap_node # provided by allNodesConfig
+          - all_nodes # provided by allNodesConfig
+          - vip_data # provided by allNodesConfig
+          - net_ip_map
+          - '"%{::osfamily}"'
+          # The following are required for compatibility with the Controller role
+          # where some vendor integrations added hieradata via ExtraConfigPre
+          - neutron_bigswitch_data # Optionally provided by Controller/ComputeExtraConfigPre
+          - neutron_cisco_data # Optionally provided by Controller/ComputeExtraConfigPre
+          - cisco_n1kv_data # Optionally provided by Controller/ComputeExtraConfigPre
+          - midonet_data #Optionally provided by AllNodesExtraConfig
+          - cisco_aci_data # Optionally provided by Controller/ComputeExtraConfigPre
+        merge_behavior: deeper
+        datafiles:
+          service_names:
+            service_names: {get_param: ServiceNames}
+            sensu::subscriptions: {get_param: MonitoringSubscriptions}
+          net_ip_map: {get_attr: [NetIpMap, net_ip_map]}
+          service_configs:
+            map_replace:
+              - {get_param: ServiceConfigSettings}
+              - values: {get_attr: [NetIpMap, net_ip_map]}
+          {{role.name.lower()}}_extraconfig:
+            map_merge:
+{%- if role.deprecated_param_extraconfig is defined %}
+              - {get_param: {{role.deprecated_param_extraconfig}}}
+{%- endif %}
+              - {get_param: {{server_resource_name}}ExtraConfig}
+          extraconfig: {get_param: ExtraConfig}
+          {{role.name.lower()}}:
+            tripleo::packages::enable_upgrade: {get_input: enable_package_upgrade}
+            tripleo::profile::base::logging::fluentd::fluentd_sources: {get_param: LoggingSources}
+            tripleo::profile::base::logging::fluentd::fluentd_groups: {get_param: LoggingGroups}
+            fqdn_internal_api: {get_attr: [NetHostMap, value, internal_api, fqdn]}
+            fqdn_storage: {get_attr: [NetHostMap, value, storage, fqdn]}
+            fqdn_storage_mgmt: {get_attr: [NetHostMap, value, storage_mgmt, fqdn]}
+            fqdn_tenant: {get_attr: [NetHostMap, value, tenant, fqdn]}
+            fqdn_management: {get_attr: [NetHostMap, value, management, fqdn]}
+            fqdn_ctlplane: {get_attr: [NetHostMap, value, ctlplane, fqdn]}
+            fqdn_external: {get_attr: [NetHostMap, value, external, fqdn]}
+            fqdn_canonical: {get_attr: [NetHostMap, value, canonical, fqdn]}
+
+  # Resource for site-specific injection of root certificate
+  NodeTLSCAData:
+    depends_on: NetworkDeployment
+    type: OS::TripleO::NodeTLSCAData
+    properties:
+      server: {get_resource: {{server_resource_name}}}
+
+  {%- if 'primary' in role.tags and 'controller' in role.tags %}
+  # Resource for site-specific passing of private keys/certificates
+  NodeTLSData:
+    depends_on: NodeTLSCAData
+    type: OS::TripleO::NodeTLSData
+    properties:
+      server: {get_resource: {{server_resource_name}}}
+      NodeIndex: {get_param: NodeIndex}
+  {%- endif -%}
+
+  # Hook for site-specific additional pre-deployment config, e.g extra hieradata
+  {{role.name}}ExtraConfigPre:
+    depends_on: {{server_resource_name}}Deployment
+    type: OS::TripleO::{{role.name}}ExtraConfigPre
+    # We have to use conditions here so that we don't break backwards
+    # compatibility with templates everywhere
+    condition: server_not_blacklisted
+    properties:
+        server: {get_resource: {{server_resource_name}}}
+
+  # Hook for site-specific additional pre-deployment config,
+  # applying to all nodes, e.g node registration/unregistration
+  NodeExtraConfig:
+    depends_on:
+      - {{role.name}}ExtraConfigPre
+  {%- if 'primary' in role.tags and 'controller' in role.tags %}
+      - NodeTLSData
+  {%- else %}
+      - NodeTLSCAData
+  {%- endif %}
+    type: OS::TripleO::NodeExtraConfig
+    # We have to use conditions here so that we don't break backwards
+    # compatibility with templates everywhere
+    condition: server_not_blacklisted
+    properties:
+        server: {get_resource: {{server_resource_name}}}
+
+  UpdateConfig:
+    type: OS::TripleO::Tasks::PackageUpdate
+
+  UpdateDeployment:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: NetworkDeployment
+    properties:
+      name: UpdateDeployment
+      config: {get_resource: UpdateConfig}
+      server: {get_resource: {{server_resource_name}}}
+      input_values:
+        update_identifier:
+          get_param: UpdateIdentifier
+      actions:
+        if:
+          - server_not_blacklisted
+          - ['CREATE', 'UPDATE']
+          - []
+
+  DeploymentActions:
+    type: OS::Heat::Value
+    properties:
+      value:
+        if:
+          - server_not_blacklisted
+          - ['CREATE', 'UPDATE']
+          - []
+
+  SshHostPubKey:
+    type: OS::TripleO::Ssh::HostPubKey
+    depends_on: {{server_resource_name}}Deployment
+    properties:
+        server: {get_resource: {{server_resource_name}}}
+        deployment_actions: {get_attr: [DeploymentActions, value]}
+
+outputs:
+  ip_address:
+    description: IP address of the server in the ctlplane network
+    value: {get_attr: [{{server_resource_name}}, networks, ctlplane, 0]}
+  hostname:
+    description: Hostname of the server
+    value: {get_attr: [{{server_resource_name}}, name]}
+  hostname_map:
+    description: Mapping of network names to hostnames
+    value:
+  {%- for network in networks %}
+      {{network.name_lower|default(network.name.lower())}}: {get_attr: [NetHostMap, value, {{network.name_lower|default(network.name.lower()) }}, fqdn]}
+  {%- endfor %}
+      ctlplane: {get_attr: [NetHostMap, value, ctlplane, fqdn]}
+      canonical: {get_attr: [NetHostMap, value, canonical, fqdn]}
+  hosts_entry:
+    value:
+      str_replace:
+        template: |
+          PRIMARYIP PRIMARYHOST.DOMAIN PRIMARYHOST
+  {%- for network in networks %}
+          {{network.name}}IP {{network.name}}HOST.DOMAIN {{network.name}}HOST
+  {%- endfor %}
+          CTLPLANEIP CTLPLANEHOST.DOMAIN CTLPLANEHOST
+        params:
+          PRIMARYIP: {get_attr: [NetIpMap, net_ip_map, {get_param: [ServiceNetMap, {{role.name}}HostnameResolveNetwork]}]}
+          DOMAIN: {get_param: CloudDomain}
+          PRIMARYHOST: {get_attr: [{{server_resource_name}}, name]}
+  {%- for network in networks %}
+          {{network.name}}IP: {get_attr: [{{network.name}}Port, ip_address]}
+          {{network.name}}HOST: {get_attr: [NetHostMap, value, {{network.name_lower|default(network.name.lower())}}, short]}
+  {%- endfor %}
+          CTLPLANEIP: {get_attr: [{{server_resource_name}}, networks, ctlplane, 0]}
+          CTLPLANEHOST: {get_attr: [NetHostMap, value, ctlplane, short]}
+  known_hosts_entry:
+    description: Entry for ssh known hosts
+    value:
+      str_replace:
+        template: "PRIMARYIP,PRIMARYHOST.DOMAIN,PRIMARYHOST,\
+  {%- for network in networks %}
+{{network.name}}IP,{{network.name}}HOST.DOMAIN,{{network.name}}HOST,\
+  {%- endfor %}
+CTLPLANEIP,CTLPLANEHOST.DOMAIN,CTLPLANEHOST HOSTSSHPUBKEY"
+        params:
+          PRIMARYIP: {get_attr: [NetIpMap, net_ip_map, {get_param: [ServiceNetMap, {{role.name}}HostnameResolveNetwork]}]}
+          DOMAIN: {get_param: CloudDomain}
+          PRIMARYHOST: {get_attr: [{{server_resource_name}}, name]}
+  {%- for network in networks %}
+          {{network.name}}IP: {get_attr: [{{network.name}}Port, ip_address]}
+          {{network.name}}HOST: {get_attr: [NetHostMap, value, {{network.name_lower|default(network.name.lower())}}, short]}
+  {%- endfor %}
+          CTLPLANEIP: {get_attr: [{{server_resource_name}}, networks, ctlplane, 0]}
+          CTLPLANEHOST: {get_attr: [NetHostMap, value, ctlplane, short]}
+          HOSTSSHPUBKEY: {get_attr: [SshHostPubKey, ecdsa]}
+  nova_server_resource:
+    description: Heat resource handle for {{role.name}} server
+    value:
+      {get_resource: {{server_resource_name}}}
+    condition: server_not_blacklisted
+  deployed_server_port_map:
+    description: |
+      Map of Heat created hostname of the server to ip address. This is the
+      hostname before it has been mapped with the HostnameMap parameter, and
+      the IP address from the ctlplane network. This map can be used to construct
+      the DeployedServerPortMap parameter when using split-stack.
+    value:
+      map_replace:
+        - hostname:
+            fixed_ips:
+              - ip_address: {get_attr: [{{server_resource_name}}, networks, ctlplane, 0]}
+        - keys:
+            hostname:
+              list_join:
+                - '-'
+                - - {get_param: Hostname}
+                  - ctlplane
+  deployed_server_deployment_swift_data_map:
+    description:
+      Map of Heat created hostname of the server to the Swift container and object
+      used to created the temporary url for metadata polling with
+      os-collect-config.
+    value:
+      map_replace:
+        - hostname:
+            container:
+              str_split:
+                - '/'
+                - {get_attr: [{{server_resource_name}}, os_collect_config, request, metadata_url]}
+                - 5
+            object:
+              str_split:
+                - '?'
+                - str_split:
+                    - '/'
+                    - {get_attr: [{{server_resource_name}}, os_collect_config, request, metadata_url]}
+                    - 6
+                - 0
+        - keys: {hostname: {get_param: Hostname}}
+  {%- if 'primary' in role.tags and 'controller' in role.tags %}
+  tls_key_modulus_md5:
+    description: MD5 checksum of the TLS Key Modulus
+    value: {get_attr: [NodeTLSData, key_modulus_md5]}
+  tls_cert_modulus_md5:
+    description: MD5 checksum of the TLS Certificate Modulus
+    value: {get_attr: [NodeTLSData, cert_modulus_md5]}
+  {%- endif %}
+  os_collect_config:
+    description: The os-collect-config configuration associated with this server resource
+    value: {get_attr: [{{server_resource_name}}, os_collect_config]}
+  {%- for network in networks %}
+  {{network.name_lower|default(network.name.lower())}}_ip_address:
+    description: IP address of the server in the {{network.name}} network
+    value: {get_attr: [{{network.name}}Port, ip_address]}
+  {%- endfor %}

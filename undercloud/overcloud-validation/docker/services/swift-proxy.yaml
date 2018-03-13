@@ -1,0 +1,175 @@
+heat_template_version: pike
+
+description: >
+  OpenStack containerized swift proxy service
+
+parameters:
+  DockerSwiftProxyImage:
+    description: image
+    type: string
+  DockerSwiftConfigImage:
+    description: The container image to use for the swift config_volume
+    type: string
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EnableInternalTLS:
+    type: boolean
+    default: false
+  UpgradeRemoveUnusedPackages:
+    default: false
+    description: Remove package if the service is being disabled during upgrade
+    type: boolean
+
+conditions:
+
+  internal_tls_enabled: {equals: [{get_param: EnableInternalTLS}, true]}
+
+resources:
+
+  ContainersCommon:
+    type: ./containers-common.yaml
+
+  SwiftProxyBase:
+    type: ../../puppet/services/swift-proxy.yaml
+    properties:
+      EndpointMap: {get_param: EndpointMap}
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+outputs:
+  role_data:
+    description: Role data for the swift proxy.
+    value:
+      service_name: {get_attr: [SwiftProxyBase, role_data, service_name]}
+      config_settings: {get_attr: [SwiftProxyBase, role_data, config_settings]}
+      step_config: &step_config
+        get_attr: [SwiftProxyBase, role_data, step_config]
+      logging_source: {get_attr: [SwiftProxyBase, role_data, logging_source]}
+      logging_groups: {get_attr: [SwiftProxyBase, role_data, logging_groups]}
+      service_config_settings: {get_attr: [SwiftProxyBase, role_data, service_config_settings]}
+      # BEGIN DOCKER SETTINGS
+      puppet_config:
+        config_volume: swift
+        puppet_tags: swift_proxy_config
+        step_config: *step_config
+        config_image: {get_param: DockerSwiftConfigImage}
+      kolla_config:
+        /var/lib/kolla/config_files/swift_proxy.json:
+          command: /usr/bin/swift-proxy-server /etc/swift/proxy-server.conf
+          config_files:
+            - source: "/var/lib/kolla/config_files/src/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+          permissions:
+            - path: /var/log/swift
+              owner: swift:swift
+              recurse: true
+        /var/lib/kolla/config_files/swift_proxy_tls_proxy.json:
+          command: /usr/sbin/httpd -DFOREGROUND
+          config_files:
+            - source: "/var/lib/kolla/config_files/src/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+      docker_config:
+        step_4:
+          map_merge:
+            - swift_proxy:
+                image: &swift_proxy_image {get_param: DockerSwiftProxyImage}
+                net: host
+                user: swift
+                restart: always
+                volumes:
+                  list_concat:
+                    - {get_attr: [ContainersCommon, volumes]}
+                    -
+                      - /var/lib/kolla/config_files/swift_proxy.json:/var/lib/kolla/config_files/config.json:ro
+                      - /var/lib/config-data/puppet-generated/swift/:/var/lib/kolla/config_files/src:ro
+                      - /run:/run
+                      - /srv/node:/srv/node
+                      - /dev:/dev
+                      - /var/log/containers/swift:/var/log/swift
+                      - /var/log/containers/httpd/swift-proxy:/var/log/httpd
+                environment:
+                  - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+            - if:
+                - internal_tls_enabled
+                - swift_proxy_tls_proxy:
+                    image: *swift_proxy_image
+                    net: host
+                    user: root
+                    restart: always
+                    volumes:
+                      list_concat:
+                        - {get_attr: [ContainersCommon, volumes]}
+                        -
+                          - /var/lib/kolla/config_files/swift_proxy_tls_proxy.json:/var/lib/kolla/config_files/config.json:ro
+                          - /var/lib/config-data/puppet-generated/swift/:/var/lib/kolla/config_files/src:ro
+                          - /etc/pki/tls/certs/httpd:/etc/pki/tls/certs/httpd:ro
+                          - /etc/pki/tls/private/httpd:/etc/pki/tls/private/httpd:ro
+                    environment:
+                      - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+                - {}
+      host_prep_tasks:
+        - name: create persistent directories
+          file:
+            path: "{{ item }}"
+            state: directory
+          with_items:
+            - /var/log/containers/swift
+            - /var/log/containers/httpd/swift-proxy
+            - /srv/node
+      upgrade_tasks:
+        - name: Check if swift-proxy or swift-object-expirer are deployed
+          command: systemctl is-enabled --quiet "{{ item }}"
+          tags: common
+          ignore_errors: True
+          register: swift_proxy_services_enabled
+          with_items:
+            - openstack-swift-proxy
+            - openstack-swift-object-expirer
+        - name: "PreUpgrade step0,validation: Check service openstack-swift-proxy and openstack-swift-object-expirer are running"
+          command: systemctl is-active --quiet "{{ item.item }}"
+          when: item.rc == 0
+          tags: step0,validation
+          with_items: "{{ swift_proxy_services_enabled.results }}"
+        - name: Stop and disable swift-proxy and swift-object-expirer services
+          tags: step2
+          when: item.rc == 0
+          service: name={{ item.item }} state=stopped enabled=no
+          with_items: "{{ swift_proxy_services_enabled.results }}"
+        - name: Remove openstack-swift-proxy package if operator requests it
+          yum: name=openstack-swift-proxy state=removed
+          tags: step2
+          ignore_errors: True
+          when: {get_param: UpgradeRemoveUnusedPackages}
+      metadata_settings:
+        get_attr: [SwiftProxyBase, role_data, metadata_settings]
