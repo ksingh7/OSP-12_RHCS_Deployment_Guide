@@ -1,0 +1,112 @@
+{
+  "nodes": [
+     {
+      "name": "r630-01",
+      "pm_user": "root",
+      "pm_password": "calvin",
+      "pm_addr": "172.21.32.3",
+      "pm_type": "pxe_ipmitool",
+      "arch": "x86_64",
+      "capabilities": "profile:control,node:controller-0,boot_option:local"      
+     },
+     {
+      "name": "r630-02",
+      "pm_user": "root",
+      "pm_password": "calvin",
+      "pm_addr": "172.21.32.4",
+      "pm_type": "pxe_ipmitool",
+      "arch": "x86_64",
+      "capabilities": "profile:R630compute,node:R630compute-0,boot_option:local" 
+     },
+     {
+      "name": "r630-03",
+      "pm_user": "root",
+      "pm_password": "calvin",
+      "pm_addr": "172.21.32.5",
+      "pm_type": "pxe_ipmitool",
+      "arch": "x86_64",
+      "capabilities": "profile:R630compute,node:R630compute-1,boot_option:local" 
+     },
+     {
+      "name": "r220-01",
+      "pm_user": "root",
+      "pm_password": "ipmipass",
+      "pm_addr": "172.21.32.12",
+      "pm_type": "pxe_ipmitool",
+      "arch": "x86_64",
+      "capabilities": "profile:R220compute,node:R220compute-0,boot_option:local" 
+     },
+     {
+      "name": "r220-08",
+      "pm_user": "root",
+      "pm_password": "ipmipass",
+      "pm_addr": "172.21.32.19",
+      "pm_type": "pxe_ipmitool",
+      "arch": "x86_64",
+      "capabilities": "profile:R220compute,node:R220compute-1,boot_option:local"
+     },
+     {
+      "name": "r220-09",
+      "pm_user": "root",
+      "pm_password": "ipmipass",
+      "pm_addr": "172.21.32.20",
+      "pm_type": "pxe_ipmitool",
+      "arch": "x86_64",
+      "capabilities": "profile:R220compute,node:R220compute-2,boot_option:local"
+     },
+     {
+      "name": "r220-10",
+      "pm_user": "root",
+      "pm_password": "ipmipass",
+      "pm_addr": "172.21.32.21",
+      "pm_type": "pxe_ipmitool",
+      "arch": "x86_64",
+      "capabilities": "profile:R220compute,node:R220compute-3,boot_option:local"
+     },
+     {
+      "name": "r730xd-01",
+      "pm_user": "root",
+      "pm_password": "calvin",
+      "pm_addr": "172.21.32.6",
+      "pm_type": "pxe_ipmitool",
+      "arch": "x86_64",
+      "capabilities": "profile:ceph-storage,node:ceph-storage-0,boot_option:local"
+     },
+     {
+      "name": "r730xd-02",
+      "pm_user": "root",
+      "pm_password": "calvin",
+      "pm_addr": "172.21.32.7",
+      "pm_type": "pxe_ipmitool",
+      "arch": "x86_64",
+      "capabilities": "profile:ceph-storage,node:ceph-storage-1,boot_option:local"
+     },
+     {
+      "name": "r730xd-03",
+      "pm_user": "root",
+      "pm_password": "calvin",
+      "pm_addr": "172.21.32.8",
+      "pm_type": "pxe_ipmitool",
+      "arch": "x86_64",
+      "capabilities": "profile:ceph-storage,node:ceph-storage-2,boot_option:local"
+     },
+     {
+      "name": "r730xd-04",
+      "pm_user": "root",
+      "pm_password": "calvin",
+      "pm_addr": "172.21.32.9",
+      "pm_type": "pxe_ipmitool",
+      "arch": "x86_64",
+      "capabilities": "profile:ceph-storage,node:ceph-storage-3,boot_option:local"
+     },
+     {
+      "name": "r730xd-05",
+      "pm_user": "root",
+      "pm_password": "calvin",
+      "pm_addr": "172.21.32.11",
+      "pm_type": "pxe_ipmitool",
+      "arch": "x86_64",
+      "capabilities": "profile:ceph-storage,node:ceph-storage-4,boot_option:local"
+     }
+ ]
+}

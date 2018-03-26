@@ -1,0 +1,216 @@
+heat_template_version: pike
+
+description: >
+  OpenStack Ironic conductor configured with Puppet
+
+parameters:
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  IronicCleaningDiskErase:
+    default: 'full'
+    description: Type of disk cleaning before and between deployments,
+                 "full" for full cleaning, "metadata" to clean only disk
+                 metadata (partition table).
+    type: string
+  IronicCleaningNetwork:
+    default: 'provisioning'
+    description: Name or UUID of the *overcloud* network used for cleaning
+                 bare metal nodes. The default value of "provisioning" can be
+                 left during the initial deployment (when no networks are
+                 created yet) and should be changed to an actual UUID in
+                 a post-deployment stack update.
+    type: string
+  IronicDefaultBootOption:
+    default: 'local'
+    description: How to boot the bare metal instances. Set to 'local' (the
+                 default) to use local bootloader (requires grub2 for partition
+                 images). Set to 'netboot' to make the instances boot from
+                 controllers using PXE/iPXE.
+    type: string
+  IronicDefaultNetworkInterface:
+    default: 'flat'
+    description: Network interface implementation to use by default.
+                 Set to "flat" (the default) to use one flat provider network.
+                 Set to "neutron" to make Ironic interact with the Neutron
+                 ML2 driver to enable other network types and certain
+                 advances networking features. Requires
+                 IronicProvisioningNetwork to be correctly set.
+    type: string
+  IronicEnabledDrivers:
+    default: ['pxe_ipmitool', 'pxe_drac', 'pxe_ilo']
+    description: Enabled Ironic drivers
+    type: comma_delimited_list
+  IronicEnabledHardwareTypes:
+    default: ['ipmi', 'redfish']
+    description: Enabled Ironic hardware types
+    type: comma_delimited_list
+  IronicEnabledManagementInterfaces:
+    default: ['ipmitool', 'redfish']
+    description: Enabled management interface implementations. Each hardware
+                 type must have at least one valid implementation enabled.
+    type: comma_delimited_list
+  IronicEnabledPowerInterfaces:
+    default: ['ipmitool', 'redfish']
+    description: Enabled power interface implementations. Each hardware
+                 type must have at least one valid implementation enabled.
+    type: comma_delimited_list
+  IronicIPXEEnabled:
+    default: true
+    description: Whether to use iPXE instead of PXE for deployment.
+    type: boolean
+  IronicIPXEPort:
+    default: 8088
+    description: Port to use for serving images when iPXE is used.
+    type: string
+  IronicPassword:
+    description: The password for the Ironic service and db account, used by the Ironic services
+    type: string
+    hidden: true
+  IronicProvisioningNetwork:
+    default: 'provisioning'
+    description: Name or UUID of the *overcloud* network used for provisioning
+                 of bare metal nodes, if IronicDefaultNetworkInterface is
+                 set to "neutron". The default value of "provisioning" can be
+                 left during the initial deployment (when no networks are
+                 created yet) and should be changed to an actual UUID in
+                 a post-deployment stack update.
+    type: string
+  MonitoringSubscriptionIronicConductor:
+    default: 'overcloud-ironic-conductor'
+    type: string
+
+resources:
+  IronicBase:
+    type: ./ironic-base.yaml
+    properties:
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      EndpointMap: {get_param: EndpointMap}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+outputs:
+  role_data:
+    description: Role data for the Ironic conductor role.
+    value:
+      service_name: ironic_conductor
+      monitoring_subscription: {get_param: MonitoringSubscriptionIronicConductor}
+      config_settings:
+        map_merge:
+          - get_attr: [IronicBase, role_data, config_settings]
+          - ironic::conductor::api_url: {get_param: [EndpointMap, IronicInternal, uri_no_suffix]}
+            ironic::conductor::cleaning_disk_erase: {get_param: IronicCleaningDiskErase}
+            ironic::conductor::cleaning_network: {get_param: IronicCleaningNetwork}
+            ironic::conductor::provisioning_network: {get_param: IronicProvisioningNetwork}
+            ironic::conductor::default_boot_option: {get_param: IronicDefaultBootOption}
+            ironic::conductor::enabled_drivers: {get_param: IronicEnabledDrivers}
+            ironic::conductor::enabled_hardware_types: {get_param: IronicEnabledHardwareTypes}
+            # We need an endpoint containing a real IP, not a VIP here
+            ironic_conductor_http_host: {get_param: [ServiceNetMap, IronicNetwork]}
+            ironic::conductor::http_url:
+              list_join:
+                - ''
+                - - 'http://'
+                  - "%{hiera('ironic_conductor_http_host')}:"
+                  - {get_param: IronicIPXEPort}
+            ironic::drivers::pxe::ipxe_enabled: {get_param: IronicIPXEEnabled}
+            ironic::glance_api_servers: {get_param: [EndpointMap, GlanceInternal, uri]}
+            # NOTE: bind IP is found in Heat replacing the network name with the
+            # local node IP for the given network; replacement examples
+            # (eg. for internal_api):
+            # internal_api -> IP
+            # internal_api_uri -> [IP]
+            # internal_api_subnet - > IP/CIDR
+            ironic::drivers::pxe::tftp_server: {get_param: [ServiceNetMap, IronicNetwork]}
+            # NOTE(dtantsur): UEFI only works with iPXE currently for us
+            ironic::drivers::pxe::uefi_pxe_config_template: '$pybasedir/drivers/modules/ipxe_config.template'
+            ironic::drivers::pxe::uefi_pxe_bootfile_name: 'ipxe.efi'
+            ironic::drivers::interfaces::enabled_console_interfaces: ['ipmitool-socat', 'no-console']
+            ironic::drivers::interfaces::enabled_management_interfaces: {get_param: IronicEnabledManagementInterfaces}
+            ironic::drivers::interfaces::enabled_network_interfaces: ['flat', 'neutron']
+            ironic::drivers::interfaces::enabled_power_interfaces: {get_param: IronicEnabledPowerInterfaces}
+            ironic::drivers::interfaces::default_network_interface: {get_param: IronicDefaultNetworkInterface}
+            tripleo.ironic_conductor.firewall_rules:
+              '134 ironic conductor TFTP':
+                dport: 69
+                proto: udp
+              '135 ironic conductor HTTP':
+                dport: {get_param: IronicIPXEPort}
+            # NOTE(dtantsur): the my_ip parameter is heavily overloaded in
+            # ironic. It's used as a default value for e.g. TFTP server IP,
+            # glance and neutron endpoints, virtual console IP. We override
+            # the TFTP server IP in ironic-conductor.yaml as it should not be
+            # the VIP, but rather a real IP of the host.
+            ironic::my_ip: {get_param: [ServiceNetMap, IronicNetwork]}
+            ironic::pxe::common::http_port: {get_param: IronicIPXEPort}
+            # Credentials to access other services
+            ironic::cinder::auth_url: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix]}
+            ironic::cinder::username: 'ironic'
+            ironic::cinder::password: {get_param: IronicPassword}
+            ironic::cinder::project_name: 'service'
+            ironic::cinder::user_domain_name: 'Default'
+            ironic::cinder::project_domain_name: 'Default'
+            ironic::glance::auth_url: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix]}
+            ironic::glance::username: 'ironic'
+            ironic::glance::password: {get_param: IronicPassword}
+            ironic::glance::project_name: 'service'
+            ironic::glance::user_domain_name: 'Default'
+            ironic::glance::project_domain_name: 'Default'
+            ironic::neutron::auth_url: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix]}
+            ironic::neutron::username: 'ironic'
+            ironic::neutron::password: {get_param: IronicPassword}
+            ironic::neutron::project_name: 'service'
+            ironic::neutron::user_domain_name: 'Default'
+            ironic::neutron::project_domain_name: 'Default'
+            ironic::service_catalog::auth_url: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix]}
+            ironic::service_catalog::username: 'ironic'
+            ironic::service_catalog::password: {get_param: IronicPassword}
+            ironic::service_catalog::project_name: 'service'
+            ironic::service_catalog::user_domain_name: 'Default'
+            ironic::service_catalog::project_domain_name: 'Default'
+            ironic::swift::auth_url: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix]}
+            ironic::swift::username: 'ironic'
+            ironic::swift::password: {get_param: IronicPassword}
+            ironic::swift::project_name: 'service'
+            ironic::swift::user_domain_name: 'Default'
+            ironic::swift::project_domain_name: 'Default'
+            # ironic-inspector support is not implemented, but let's configure
+            # the credentials for consistency.
+            ironic::drivers::inspector::enabled: false
+            ironic::drivers::inspector::auth_url: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix]}
+            ironic::drivers::inspector::username: 'ironic'
+            ironic::drivers::inspector::password: {get_param: IronicPassword}
+            ironic::drivers::inspector::project_name: 'service'
+            ironic::drivers::inspector::user_domain_name: 'Default'
+            ironic::drivers::inspector::project_domain_name: 'Default'
+      step_config: |
+        include ::tripleo::profile::base::ironic::conductor
+      upgrade_tasks:
+        - name: Stop ironic_conductor service
+          tags: step1
+          service: name=openstack-ironic-conductor state=stopped

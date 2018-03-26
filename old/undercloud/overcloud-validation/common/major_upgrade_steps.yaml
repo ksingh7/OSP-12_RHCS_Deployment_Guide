@@ -1,0 +1,1631 @@
+heat_template_version: pike
+description: 'Upgrade steps for all roles'
+
+parameters:
+  servers:
+    type: json
+  stack_name:
+    type: string
+    description: Name of the topmost stack
+  role_data:
+    type: json
+    description: Mapping of Role name e.g Controller to the per-role data
+  ctlplane_service_ips:
+    type: json
+  UpdateIdentifier:
+    type: string
+    default: ''
+    description: >
+      Setting to a previously unused value during stack-update will trigger
+      the Upgrade resources to re-run on all roles.
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  KeystoneRegion:
+    type: string
+    default: 'regionOne'
+    description: Keystone region for endpoint
+  NovaPassword:
+    description: The password for the nova service and db account
+    type: string
+    hidden: true
+
+resources:
+
+
+  ComputeDeliverUpgradeScriptConfig:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      config:
+        list_join:
+        - ''
+        - - "#!/bin/bash\n\n"
+          - "set -eu\n\n"
+          - str_replace:
+              template: |
+                ROLE='ROLE_NAME'
+              params:
+                ROLE_NAME: Compute
+          - get_file: ../extraconfig/tasks/pacemaker_common_functions.sh
+          - get_file: ../extraconfig/tasks/tripleo_upgrade_node.sh
+
+  ComputeDeliverUpgradeScriptDeployment:
+    type: OS::Heat::SoftwareDeploymentGroup
+    properties:
+      servers:  {get_param: [servers, Compute]}
+      config: {get_resource: ComputeDeliverUpgradeScriptConfig}
+
+  ObjectStorageDeliverUpgradeScriptConfig:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      config:
+        list_join:
+        - ''
+        - - "#!/bin/bash\n\n"
+          - "set -eu\n\n"
+          - str_replace:
+              template: |
+                ROLE='ROLE_NAME'
+              params:
+                ROLE_NAME: ObjectStorage
+          - get_file: ../extraconfig/tasks/pacemaker_common_functions.sh
+          - get_file: ../extraconfig/tasks/tripleo_upgrade_node.sh
+
+  ObjectStorageDeliverUpgradeScriptDeployment:
+    type: OS::Heat::SoftwareDeploymentGroup
+    properties:
+      servers:  {get_param: [servers, ObjectStorage]}
+      config: {get_resource: ObjectStorageDeliverUpgradeScriptConfig}
+
+
+# Upgrade Steps for all roles, batched updates
+# The UpgradeConfig resources could actually be created without
+# serialization, but the event output is easier to follow if we
+# do, and there should be minimal performance hit (creating the
+# config is cheap compared to the time to apply the deployment).
+
+  # Batch config resources step 0
+  ControllerUpgradeBatchConfig_Step0:
+    type: OS::TripleO::UpgradeConfig
+    
+      
+    
+      
+    
+    
+    depends_on:
+      
+      - ComputeDeliverUpgradeScriptDeployment
+      
+      - ObjectStorageDeliverUpgradeScriptDeployment
+      
+    
+    
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Controller, upgrade_batch_tasks]}
+      step: 0
+  ComputeUpgradeBatchConfig_Step0:
+    type: OS::TripleO::UpgradeConfig
+    
+      
+    
+      
+    
+    
+    depends_on:
+      
+      - ComputeDeliverUpgradeScriptDeployment
+      
+      - ObjectStorageDeliverUpgradeScriptDeployment
+      
+    
+    
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Compute, upgrade_batch_tasks]}
+      step: 0
+  BlockStorageUpgradeBatchConfig_Step0:
+    type: OS::TripleO::UpgradeConfig
+    
+      
+    
+      
+    
+    
+    depends_on:
+      
+      - ComputeDeliverUpgradeScriptDeployment
+      
+      - ObjectStorageDeliverUpgradeScriptDeployment
+      
+    
+    
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, BlockStorage, upgrade_batch_tasks]}
+      step: 0
+  ObjectStorageUpgradeBatchConfig_Step0:
+    type: OS::TripleO::UpgradeConfig
+    
+      
+    
+      
+    
+    
+    depends_on:
+      
+      - ComputeDeliverUpgradeScriptDeployment
+      
+      - ObjectStorageDeliverUpgradeScriptDeployment
+      
+    
+    
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, ObjectStorage, upgrade_batch_tasks]}
+      step: 0
+  CephStorageUpgradeBatchConfig_Step0:
+    type: OS::TripleO::UpgradeConfig
+    
+      
+    
+      
+    
+    
+    depends_on:
+      
+      - ComputeDeliverUpgradeScriptDeployment
+      
+      - ObjectStorageDeliverUpgradeScriptDeployment
+      
+    
+    
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, CephStorage, upgrade_batch_tasks]}
+      step: 0
+
+  # Batch deployment resources for step 0 (only for enabled roles)
+  ControllerUpgradeBatch_Step0:
+    type: OS::Heat::SoftwareDeploymentGroup
+    
+      
+    
+      
+    
+    
+    depends_on:
+      
+      - ComputeDeliverUpgradeScriptDeployment
+      
+      - ObjectStorageDeliverUpgradeScriptDeployment
+      
+    
+    
+    update_policy:
+      batch_create:
+        max_batch_size: 1
+      rolling_update:
+        max_batch_size: 1
+    properties:
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: ControllerUpgradeBatchConfig_Step0}
+      input_values:
+        role: Controller
+        update_identifier: {get_param: UpdateIdentifier}
+  BlockStorageUpgradeBatch_Step0:
+    type: OS::Heat::SoftwareDeploymentGroup
+    
+      
+    
+      
+    
+    
+    depends_on:
+      
+      - ComputeDeliverUpgradeScriptDeployment
+      
+      - ObjectStorageDeliverUpgradeScriptDeployment
+      
+    
+    
+    update_policy:
+      batch_create:
+        max_batch_size: 1
+      rolling_update:
+        max_batch_size: 1
+    properties:
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: BlockStorageUpgradeBatchConfig_Step0}
+      input_values:
+        role: BlockStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  CephStorageUpgradeBatch_Step0:
+    type: OS::Heat::SoftwareDeploymentGroup
+    
+      
+    
+      
+    
+    
+    depends_on:
+      
+      - ComputeDeliverUpgradeScriptDeployment
+      
+      - ObjectStorageDeliverUpgradeScriptDeployment
+      
+    
+    
+    update_policy:
+      batch_create:
+        max_batch_size: 1
+      rolling_update:
+        max_batch_size: 1
+    properties:
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: CephStorageUpgradeBatchConfig_Step0}
+      input_values:
+        role: CephStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  # Batch config resources step 1
+  ControllerUpgradeBatchConfig_Step1:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerUpgradeBatch_Step0
+      - BlockStorageUpgradeBatch_Step0
+      - CephStorageUpgradeBatch_Step0
+    
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Controller, upgrade_batch_tasks]}
+      step: 1
+  ComputeUpgradeBatchConfig_Step1:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerUpgradeBatch_Step0
+      - BlockStorageUpgradeBatch_Step0
+      - CephStorageUpgradeBatch_Step0
+    
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Compute, upgrade_batch_tasks]}
+      step: 1
+  BlockStorageUpgradeBatchConfig_Step1:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerUpgradeBatch_Step0
+      - BlockStorageUpgradeBatch_Step0
+      - CephStorageUpgradeBatch_Step0
+    
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, BlockStorage, upgrade_batch_tasks]}
+      step: 1
+  ObjectStorageUpgradeBatchConfig_Step1:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerUpgradeBatch_Step0
+      - BlockStorageUpgradeBatch_Step0
+      - CephStorageUpgradeBatch_Step0
+    
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, ObjectStorage, upgrade_batch_tasks]}
+      step: 1
+  CephStorageUpgradeBatchConfig_Step1:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerUpgradeBatch_Step0
+      - BlockStorageUpgradeBatch_Step0
+      - CephStorageUpgradeBatch_Step0
+    
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, CephStorage, upgrade_batch_tasks]}
+      step: 1
+
+  # Batch deployment resources for step 1 (only for enabled roles)
+  ControllerUpgradeBatch_Step1:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgradeBatch_Step0
+      - BlockStorageUpgradeBatch_Step0
+      - CephStorageUpgradeBatch_Step0
+    
+    update_policy:
+      batch_create:
+        max_batch_size: 1
+      rolling_update:
+        max_batch_size: 1
+    properties:
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: ControllerUpgradeBatchConfig_Step1}
+      input_values:
+        role: Controller
+        update_identifier: {get_param: UpdateIdentifier}
+  BlockStorageUpgradeBatch_Step1:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgradeBatch_Step0
+      - BlockStorageUpgradeBatch_Step0
+      - CephStorageUpgradeBatch_Step0
+    
+    update_policy:
+      batch_create:
+        max_batch_size: 1
+      rolling_update:
+        max_batch_size: 1
+    properties:
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: BlockStorageUpgradeBatchConfig_Step1}
+      input_values:
+        role: BlockStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  CephStorageUpgradeBatch_Step1:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgradeBatch_Step0
+      - BlockStorageUpgradeBatch_Step0
+      - CephStorageUpgradeBatch_Step0
+    
+    update_policy:
+      batch_create:
+        max_batch_size: 1
+      rolling_update:
+        max_batch_size: 1
+    properties:
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: CephStorageUpgradeBatchConfig_Step1}
+      input_values:
+        role: CephStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  # Batch config resources step 2
+  ControllerUpgradeBatchConfig_Step2:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerUpgradeBatch_Step1
+      - BlockStorageUpgradeBatch_Step1
+      - CephStorageUpgradeBatch_Step1
+    
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Controller, upgrade_batch_tasks]}
+      step: 2
+  ComputeUpgradeBatchConfig_Step2:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerUpgradeBatch_Step1
+      - BlockStorageUpgradeBatch_Step1
+      - CephStorageUpgradeBatch_Step1
+    
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Compute, upgrade_batch_tasks]}
+      step: 2
+  BlockStorageUpgradeBatchConfig_Step2:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerUpgradeBatch_Step1
+      - BlockStorageUpgradeBatch_Step1
+      - CephStorageUpgradeBatch_Step1
+    
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, BlockStorage, upgrade_batch_tasks]}
+      step: 2
+  ObjectStorageUpgradeBatchConfig_Step2:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerUpgradeBatch_Step1
+      - BlockStorageUpgradeBatch_Step1
+      - CephStorageUpgradeBatch_Step1
+    
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, ObjectStorage, upgrade_batch_tasks]}
+      step: 2
+  CephStorageUpgradeBatchConfig_Step2:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerUpgradeBatch_Step1
+      - BlockStorageUpgradeBatch_Step1
+      - CephStorageUpgradeBatch_Step1
+    
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, CephStorage, upgrade_batch_tasks]}
+      step: 2
+
+  # Batch deployment resources for step 2 (only for enabled roles)
+  ControllerUpgradeBatch_Step2:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgradeBatch_Step1
+      - BlockStorageUpgradeBatch_Step1
+      - CephStorageUpgradeBatch_Step1
+    
+    update_policy:
+      batch_create:
+        max_batch_size: 1
+      rolling_update:
+        max_batch_size: 1
+    properties:
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: ControllerUpgradeBatchConfig_Step2}
+      input_values:
+        role: Controller
+        update_identifier: {get_param: UpdateIdentifier}
+  BlockStorageUpgradeBatch_Step2:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgradeBatch_Step1
+      - BlockStorageUpgradeBatch_Step1
+      - CephStorageUpgradeBatch_Step1
+    
+    update_policy:
+      batch_create:
+        max_batch_size: 1
+      rolling_update:
+        max_batch_size: 1
+    properties:
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: BlockStorageUpgradeBatchConfig_Step2}
+      input_values:
+        role: BlockStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  CephStorageUpgradeBatch_Step2:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgradeBatch_Step1
+      - BlockStorageUpgradeBatch_Step1
+      - CephStorageUpgradeBatch_Step1
+    
+    update_policy:
+      batch_create:
+        max_batch_size: 1
+      rolling_update:
+        max_batch_size: 1
+    properties:
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: CephStorageUpgradeBatchConfig_Step2}
+      input_values:
+        role: CephStorage
+        update_identifier: {get_param: UpdateIdentifier}
+
+# Upgrade Steps for all roles
+  # Config resources for step 0
+  ControllerUpgradeConfig_Step0:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgradeBatch_Step2
+      - BlockStorageUpgradeBatch_Step2
+      - CephStorageUpgradeBatch_Step2
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Controller, upgrade_tasks]}
+      step: 0
+  ComputeUpgradeConfig_Step0:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgradeBatch_Step2
+      - BlockStorageUpgradeBatch_Step2
+      - CephStorageUpgradeBatch_Step2
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Compute, upgrade_tasks]}
+      step: 0
+  BlockStorageUpgradeConfig_Step0:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgradeBatch_Step2
+      - BlockStorageUpgradeBatch_Step2
+      - CephStorageUpgradeBatch_Step2
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, BlockStorage, upgrade_tasks]}
+      step: 0
+  ObjectStorageUpgradeConfig_Step0:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgradeBatch_Step2
+      - BlockStorageUpgradeBatch_Step2
+      - CephStorageUpgradeBatch_Step2
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, ObjectStorage, upgrade_tasks]}
+      step: 0
+  CephStorageUpgradeConfig_Step0:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgradeBatch_Step2
+      - BlockStorageUpgradeBatch_Step2
+      - CephStorageUpgradeBatch_Step2
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, CephStorage, upgrade_tasks]}
+      step: 0
+
+  # Deployment resources for step 0 (only for enabled roles)
+  ControllerUpgrade_Step0:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgradeBatch_Step2
+      - BlockStorageUpgradeBatch_Step2
+      - CephStorageUpgradeBatch_Step2
+    properties:
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: ControllerUpgradeConfig_Step0}
+      input_values:
+        role: Controller
+        update_identifier: {get_param: UpdateIdentifier}
+  BlockStorageUpgrade_Step0:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgradeBatch_Step2
+      - BlockStorageUpgradeBatch_Step2
+      - CephStorageUpgradeBatch_Step2
+    properties:
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: BlockStorageUpgradeConfig_Step0}
+      input_values:
+        role: BlockStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  CephStorageUpgrade_Step0:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgradeBatch_Step2
+      - BlockStorageUpgradeBatch_Step2
+      - CephStorageUpgradeBatch_Step2
+    properties:
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: CephStorageUpgradeConfig_Step0}
+      input_values:
+        role: CephStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  # Config resources for step 1
+  ControllerUpgradeConfig_Step1:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step0
+      - BlockStorageUpgrade_Step0
+      - CephStorageUpgrade_Step0
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Controller, upgrade_tasks]}
+      step: 1
+  ComputeUpgradeConfig_Step1:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step0
+      - BlockStorageUpgrade_Step0
+      - CephStorageUpgrade_Step0
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Compute, upgrade_tasks]}
+      step: 1
+  BlockStorageUpgradeConfig_Step1:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step0
+      - BlockStorageUpgrade_Step0
+      - CephStorageUpgrade_Step0
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, BlockStorage, upgrade_tasks]}
+      step: 1
+  ObjectStorageUpgradeConfig_Step1:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step0
+      - BlockStorageUpgrade_Step0
+      - CephStorageUpgrade_Step0
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, ObjectStorage, upgrade_tasks]}
+      step: 1
+  CephStorageUpgradeConfig_Step1:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step0
+      - BlockStorageUpgrade_Step0
+      - CephStorageUpgrade_Step0
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, CephStorage, upgrade_tasks]}
+      step: 1
+
+  # Deployment resources for step 1 (only for enabled roles)
+  ControllerUpgrade_Step1:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgrade_Step0
+      - BlockStorageUpgrade_Step0
+      - CephStorageUpgrade_Step0
+    properties:
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: ControllerUpgradeConfig_Step1}
+      input_values:
+        role: Controller
+        update_identifier: {get_param: UpdateIdentifier}
+  BlockStorageUpgrade_Step1:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgrade_Step0
+      - BlockStorageUpgrade_Step0
+      - CephStorageUpgrade_Step0
+    properties:
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: BlockStorageUpgradeConfig_Step1}
+      input_values:
+        role: BlockStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  CephStorageUpgrade_Step1:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgrade_Step0
+      - BlockStorageUpgrade_Step0
+      - CephStorageUpgrade_Step0
+    properties:
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: CephStorageUpgradeConfig_Step1}
+      input_values:
+        role: CephStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  # Config resources for step 2
+  ControllerUpgradeConfig_Step2:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step1
+      - BlockStorageUpgrade_Step1
+      - CephStorageUpgrade_Step1
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Controller, upgrade_tasks]}
+      step: 2
+  ComputeUpgradeConfig_Step2:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step1
+      - BlockStorageUpgrade_Step1
+      - CephStorageUpgrade_Step1
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Compute, upgrade_tasks]}
+      step: 2
+  BlockStorageUpgradeConfig_Step2:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step1
+      - BlockStorageUpgrade_Step1
+      - CephStorageUpgrade_Step1
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, BlockStorage, upgrade_tasks]}
+      step: 2
+  ObjectStorageUpgradeConfig_Step2:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step1
+      - BlockStorageUpgrade_Step1
+      - CephStorageUpgrade_Step1
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, ObjectStorage, upgrade_tasks]}
+      step: 2
+  CephStorageUpgradeConfig_Step2:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step1
+      - BlockStorageUpgrade_Step1
+      - CephStorageUpgrade_Step1
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, CephStorage, upgrade_tasks]}
+      step: 2
+
+  # Deployment resources for step 2 (only for enabled roles)
+  ControllerUpgrade_Step2:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgrade_Step1
+      - BlockStorageUpgrade_Step1
+      - CephStorageUpgrade_Step1
+    properties:
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: ControllerUpgradeConfig_Step2}
+      input_values:
+        role: Controller
+        update_identifier: {get_param: UpdateIdentifier}
+  BlockStorageUpgrade_Step2:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgrade_Step1
+      - BlockStorageUpgrade_Step1
+      - CephStorageUpgrade_Step1
+    properties:
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: BlockStorageUpgradeConfig_Step2}
+      input_values:
+        role: BlockStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  CephStorageUpgrade_Step2:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgrade_Step1
+      - BlockStorageUpgrade_Step1
+      - CephStorageUpgrade_Step1
+    properties:
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: CephStorageUpgradeConfig_Step2}
+      input_values:
+        role: CephStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  # Config resources for step 3
+  ControllerUpgradeConfig_Step3:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step2
+      - BlockStorageUpgrade_Step2
+      - CephStorageUpgrade_Step2
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Controller, upgrade_tasks]}
+      step: 3
+  ComputeUpgradeConfig_Step3:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step2
+      - BlockStorageUpgrade_Step2
+      - CephStorageUpgrade_Step2
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Compute, upgrade_tasks]}
+      step: 3
+  BlockStorageUpgradeConfig_Step3:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step2
+      - BlockStorageUpgrade_Step2
+      - CephStorageUpgrade_Step2
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, BlockStorage, upgrade_tasks]}
+      step: 3
+  ObjectStorageUpgradeConfig_Step3:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step2
+      - BlockStorageUpgrade_Step2
+      - CephStorageUpgrade_Step2
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, ObjectStorage, upgrade_tasks]}
+      step: 3
+  CephStorageUpgradeConfig_Step3:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step2
+      - BlockStorageUpgrade_Step2
+      - CephStorageUpgrade_Step2
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, CephStorage, upgrade_tasks]}
+      step: 3
+
+  # Deployment resources for step 3 (only for enabled roles)
+  ControllerUpgrade_Step3:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgrade_Step2
+      - BlockStorageUpgrade_Step2
+      - CephStorageUpgrade_Step2
+    properties:
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: ControllerUpgradeConfig_Step3}
+      input_values:
+        role: Controller
+        update_identifier: {get_param: UpdateIdentifier}
+  BlockStorageUpgrade_Step3:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgrade_Step2
+      - BlockStorageUpgrade_Step2
+      - CephStorageUpgrade_Step2
+    properties:
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: BlockStorageUpgradeConfig_Step3}
+      input_values:
+        role: BlockStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  CephStorageUpgrade_Step3:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgrade_Step2
+      - BlockStorageUpgrade_Step2
+      - CephStorageUpgrade_Step2
+    properties:
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: CephStorageUpgradeConfig_Step3}
+      input_values:
+        role: CephStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  # Config resources for step 4
+  ControllerUpgradeConfig_Step4:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step3
+      - BlockStorageUpgrade_Step3
+      - CephStorageUpgrade_Step3
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Controller, upgrade_tasks]}
+      step: 4
+  ComputeUpgradeConfig_Step4:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step3
+      - BlockStorageUpgrade_Step3
+      - CephStorageUpgrade_Step3
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Compute, upgrade_tasks]}
+      step: 4
+  BlockStorageUpgradeConfig_Step4:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step3
+      - BlockStorageUpgrade_Step3
+      - CephStorageUpgrade_Step3
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, BlockStorage, upgrade_tasks]}
+      step: 4
+  ObjectStorageUpgradeConfig_Step4:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step3
+      - BlockStorageUpgrade_Step3
+      - CephStorageUpgrade_Step3
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, ObjectStorage, upgrade_tasks]}
+      step: 4
+  CephStorageUpgradeConfig_Step4:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step3
+      - BlockStorageUpgrade_Step3
+      - CephStorageUpgrade_Step3
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, CephStorage, upgrade_tasks]}
+      step: 4
+
+  # Deployment resources for step 4 (only for enabled roles)
+  ControllerUpgrade_Step4:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgrade_Step3
+      - BlockStorageUpgrade_Step3
+      - CephStorageUpgrade_Step3
+    properties:
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: ControllerUpgradeConfig_Step4}
+      input_values:
+        role: Controller
+        update_identifier: {get_param: UpdateIdentifier}
+  BlockStorageUpgrade_Step4:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgrade_Step3
+      - BlockStorageUpgrade_Step3
+      - CephStorageUpgrade_Step3
+    properties:
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: BlockStorageUpgradeConfig_Step4}
+      input_values:
+        role: BlockStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  CephStorageUpgrade_Step4:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgrade_Step3
+      - BlockStorageUpgrade_Step3
+      - CephStorageUpgrade_Step3
+    properties:
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: CephStorageUpgradeConfig_Step4}
+      input_values:
+        role: CephStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  # Config resources for step 5
+  ControllerUpgradeConfig_Step5:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step4
+      - BlockStorageUpgrade_Step4
+      - CephStorageUpgrade_Step4
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Controller, upgrade_tasks]}
+      step: 5
+  ComputeUpgradeConfig_Step5:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step4
+      - BlockStorageUpgrade_Step4
+      - CephStorageUpgrade_Step4
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Compute, upgrade_tasks]}
+      step: 5
+  BlockStorageUpgradeConfig_Step5:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step4
+      - BlockStorageUpgrade_Step4
+      - CephStorageUpgrade_Step4
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, BlockStorage, upgrade_tasks]}
+      step: 5
+  ObjectStorageUpgradeConfig_Step5:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step4
+      - BlockStorageUpgrade_Step4
+      - CephStorageUpgrade_Step4
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, ObjectStorage, upgrade_tasks]}
+      step: 5
+  CephStorageUpgradeConfig_Step5:
+    type: OS::TripleO::UpgradeConfig
+    # The UpgradeConfig resources could actually be created without
+    # serialization, but the event output is easier to follow if we
+    # do, and there should be minimal performance hit (creating the
+    # config is cheap compared to the time to apply the deployment).
+    depends_on:
+      - ControllerUpgrade_Step4
+      - BlockStorageUpgrade_Step4
+      - CephStorageUpgrade_Step4
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, CephStorage, upgrade_tasks]}
+      step: 5
+
+  # Deployment resources for step 5 (only for enabled roles)
+  ControllerUpgrade_Step5:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgrade_Step4
+      - BlockStorageUpgrade_Step4
+      - CephStorageUpgrade_Step4
+    properties:
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: ControllerUpgradeConfig_Step5}
+      input_values:
+        role: Controller
+        update_identifier: {get_param: UpdateIdentifier}
+  BlockStorageUpgrade_Step5:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgrade_Step4
+      - BlockStorageUpgrade_Step4
+      - CephStorageUpgrade_Step4
+    properties:
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: BlockStorageUpgradeConfig_Step5}
+      input_values:
+        role: BlockStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  CephStorageUpgrade_Step5:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerUpgrade_Step4
+      - BlockStorageUpgrade_Step4
+      - CephStorageUpgrade_Step4
+    properties:
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: CephStorageUpgradeConfig_Step5}
+      input_values:
+        role: CephStorage
+        update_identifier: {get_param: UpdateIdentifier}
+
+  # Post upgrade deployment steps for all roles
+  # This runs the normal configuration (e.g puppet) steps unless upgrade
+  # is disabled for the role
+  AllNodesPostUpgradeSteps:
+    type: OS::TripleO::PostUpgradeSteps
+    depends_on:
+      - ControllerUpgrade_Step5
+      - BlockStorageUpgrade_Step5
+      - CephStorageUpgrade_Step5
+    properties:
+      servers: {get_param: servers}
+      stack_name: {get_param: stack_name}
+      role_data: {get_param: role_data}
+      ctlplane_service_ips: {get_param: ctlplane_service_ips}
+  ControllerPostUpgradeConfig_Config0:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - AllNodesPostUpgradeSteps
+      - AllNodesPostUpgradeSteps
+      - AllNodesPostUpgradeSteps
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Controller, post_upgrade_tasks]}
+      step: 0
+  ComputePostUpgradeConfig_Config0:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - AllNodesPostUpgradeSteps
+      - AllNodesPostUpgradeSteps
+      - AllNodesPostUpgradeSteps
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Compute, post_upgrade_tasks]}
+      step: 0
+  BlockStoragePostUpgradeConfig_Config0:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - AllNodesPostUpgradeSteps
+      - AllNodesPostUpgradeSteps
+      - AllNodesPostUpgradeSteps
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, BlockStorage, post_upgrade_tasks]}
+      step: 0
+  ObjectStoragePostUpgradeConfig_Config0:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - AllNodesPostUpgradeSteps
+      - AllNodesPostUpgradeSteps
+      - AllNodesPostUpgradeSteps
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, ObjectStorage, post_upgrade_tasks]}
+      step: 0
+  CephStoragePostUpgradeConfig_Config0:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - AllNodesPostUpgradeSteps
+      - AllNodesPostUpgradeSteps
+      - AllNodesPostUpgradeSteps
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, CephStorage, post_upgrade_tasks]}
+      step: 0
+  ControllerPostUpgradeConfig_Deployment0:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - AllNodesPostUpgradeSteps
+      - AllNodesPostUpgradeSteps
+      - AllNodesPostUpgradeSteps
+    properties:
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: ControllerPostUpgradeConfig_Config0}
+      input_values:
+        role: Controller
+        update_identifier: {get_param: UpdateIdentifier}
+  BlockStoragePostUpgradeConfig_Deployment0:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - AllNodesPostUpgradeSteps
+      - AllNodesPostUpgradeSteps
+      - AllNodesPostUpgradeSteps
+    properties:
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: BlockStoragePostUpgradeConfig_Config0}
+      input_values:
+        role: BlockStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  CephStoragePostUpgradeConfig_Deployment0:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - AllNodesPostUpgradeSteps
+      - AllNodesPostUpgradeSteps
+      - AllNodesPostUpgradeSteps
+    properties:
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: CephStoragePostUpgradeConfig_Config0}
+      input_values:
+        role: CephStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  ControllerPostUpgradeConfig_Config1:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment0
+      - BlockStoragePostUpgradeConfig_Deployment0
+      - CephStoragePostUpgradeConfig_Deployment0
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Controller, post_upgrade_tasks]}
+      step: 1
+  ComputePostUpgradeConfig_Config1:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment0
+      - BlockStoragePostUpgradeConfig_Deployment0
+      - CephStoragePostUpgradeConfig_Deployment0
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Compute, post_upgrade_tasks]}
+      step: 1
+  BlockStoragePostUpgradeConfig_Config1:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment0
+      - BlockStoragePostUpgradeConfig_Deployment0
+      - CephStoragePostUpgradeConfig_Deployment0
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, BlockStorage, post_upgrade_tasks]}
+      step: 1
+  ObjectStoragePostUpgradeConfig_Config1:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment0
+      - BlockStoragePostUpgradeConfig_Deployment0
+      - CephStoragePostUpgradeConfig_Deployment0
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, ObjectStorage, post_upgrade_tasks]}
+      step: 1
+  CephStoragePostUpgradeConfig_Config1:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment0
+      - BlockStoragePostUpgradeConfig_Deployment0
+      - CephStoragePostUpgradeConfig_Deployment0
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, CephStorage, post_upgrade_tasks]}
+      step: 1
+  ControllerPostUpgradeConfig_Deployment1:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment0
+      - BlockStoragePostUpgradeConfig_Deployment0
+      - CephStoragePostUpgradeConfig_Deployment0
+    properties:
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: ControllerPostUpgradeConfig_Config1}
+      input_values:
+        role: Controller
+        update_identifier: {get_param: UpdateIdentifier}
+  BlockStoragePostUpgradeConfig_Deployment1:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment0
+      - BlockStoragePostUpgradeConfig_Deployment0
+      - CephStoragePostUpgradeConfig_Deployment0
+    properties:
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: BlockStoragePostUpgradeConfig_Config1}
+      input_values:
+        role: BlockStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  CephStoragePostUpgradeConfig_Deployment1:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment0
+      - BlockStoragePostUpgradeConfig_Deployment0
+      - CephStoragePostUpgradeConfig_Deployment0
+    properties:
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: CephStoragePostUpgradeConfig_Config1}
+      input_values:
+        role: CephStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  ControllerPostUpgradeConfig_Config2:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment1
+      - BlockStoragePostUpgradeConfig_Deployment1
+      - CephStoragePostUpgradeConfig_Deployment1
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Controller, post_upgrade_tasks]}
+      step: 2
+  ComputePostUpgradeConfig_Config2:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment1
+      - BlockStoragePostUpgradeConfig_Deployment1
+      - CephStoragePostUpgradeConfig_Deployment1
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Compute, post_upgrade_tasks]}
+      step: 2
+  BlockStoragePostUpgradeConfig_Config2:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment1
+      - BlockStoragePostUpgradeConfig_Deployment1
+      - CephStoragePostUpgradeConfig_Deployment1
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, BlockStorage, post_upgrade_tasks]}
+      step: 2
+  ObjectStoragePostUpgradeConfig_Config2:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment1
+      - BlockStoragePostUpgradeConfig_Deployment1
+      - CephStoragePostUpgradeConfig_Deployment1
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, ObjectStorage, post_upgrade_tasks]}
+      step: 2
+  CephStoragePostUpgradeConfig_Config2:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment1
+      - BlockStoragePostUpgradeConfig_Deployment1
+      - CephStoragePostUpgradeConfig_Deployment1
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, CephStorage, post_upgrade_tasks]}
+      step: 2
+  ControllerPostUpgradeConfig_Deployment2:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment1
+      - BlockStoragePostUpgradeConfig_Deployment1
+      - CephStoragePostUpgradeConfig_Deployment1
+    properties:
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: ControllerPostUpgradeConfig_Config2}
+      input_values:
+        role: Controller
+        update_identifier: {get_param: UpdateIdentifier}
+  BlockStoragePostUpgradeConfig_Deployment2:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment1
+      - BlockStoragePostUpgradeConfig_Deployment1
+      - CephStoragePostUpgradeConfig_Deployment1
+    properties:
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: BlockStoragePostUpgradeConfig_Config2}
+      input_values:
+        role: BlockStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  CephStoragePostUpgradeConfig_Deployment2:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment1
+      - BlockStoragePostUpgradeConfig_Deployment1
+      - CephStoragePostUpgradeConfig_Deployment1
+    properties:
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: CephStoragePostUpgradeConfig_Config2}
+      input_values:
+        role: CephStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  ControllerPostUpgradeConfig_Config3:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment2
+      - BlockStoragePostUpgradeConfig_Deployment2
+      - CephStoragePostUpgradeConfig_Deployment2
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Controller, post_upgrade_tasks]}
+      step: 3
+  ComputePostUpgradeConfig_Config3:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment2
+      - BlockStoragePostUpgradeConfig_Deployment2
+      - CephStoragePostUpgradeConfig_Deployment2
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Compute, post_upgrade_tasks]}
+      step: 3
+  BlockStoragePostUpgradeConfig_Config3:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment2
+      - BlockStoragePostUpgradeConfig_Deployment2
+      - CephStoragePostUpgradeConfig_Deployment2
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, BlockStorage, post_upgrade_tasks]}
+      step: 3
+  ObjectStoragePostUpgradeConfig_Config3:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment2
+      - BlockStoragePostUpgradeConfig_Deployment2
+      - CephStoragePostUpgradeConfig_Deployment2
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, ObjectStorage, post_upgrade_tasks]}
+      step: 3
+  CephStoragePostUpgradeConfig_Config3:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment2
+      - BlockStoragePostUpgradeConfig_Deployment2
+      - CephStoragePostUpgradeConfig_Deployment2
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, CephStorage, post_upgrade_tasks]}
+      step: 3
+  ControllerPostUpgradeConfig_Deployment3:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment2
+      - BlockStoragePostUpgradeConfig_Deployment2
+      - CephStoragePostUpgradeConfig_Deployment2
+    properties:
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: ControllerPostUpgradeConfig_Config3}
+      input_values:
+        role: Controller
+        update_identifier: {get_param: UpdateIdentifier}
+  BlockStoragePostUpgradeConfig_Deployment3:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment2
+      - BlockStoragePostUpgradeConfig_Deployment2
+      - CephStoragePostUpgradeConfig_Deployment2
+    properties:
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: BlockStoragePostUpgradeConfig_Config3}
+      input_values:
+        role: BlockStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  CephStoragePostUpgradeConfig_Deployment3:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment2
+      - BlockStoragePostUpgradeConfig_Deployment2
+      - CephStoragePostUpgradeConfig_Deployment2
+    properties:
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: CephStoragePostUpgradeConfig_Config3}
+      input_values:
+        role: CephStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  ControllerPostUpgradeConfig_Config4:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment3
+      - BlockStoragePostUpgradeConfig_Deployment3
+      - CephStoragePostUpgradeConfig_Deployment3
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Controller, post_upgrade_tasks]}
+      step: 4
+  ComputePostUpgradeConfig_Config4:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment3
+      - BlockStoragePostUpgradeConfig_Deployment3
+      - CephStoragePostUpgradeConfig_Deployment3
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Compute, post_upgrade_tasks]}
+      step: 4
+  BlockStoragePostUpgradeConfig_Config4:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment3
+      - BlockStoragePostUpgradeConfig_Deployment3
+      - CephStoragePostUpgradeConfig_Deployment3
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, BlockStorage, post_upgrade_tasks]}
+      step: 4
+  ObjectStoragePostUpgradeConfig_Config4:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment3
+      - BlockStoragePostUpgradeConfig_Deployment3
+      - CephStoragePostUpgradeConfig_Deployment3
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, ObjectStorage, post_upgrade_tasks]}
+      step: 4
+  CephStoragePostUpgradeConfig_Config4:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment3
+      - BlockStoragePostUpgradeConfig_Deployment3
+      - CephStoragePostUpgradeConfig_Deployment3
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, CephStorage, post_upgrade_tasks]}
+      step: 4
+  ControllerPostUpgradeConfig_Deployment4:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment3
+      - BlockStoragePostUpgradeConfig_Deployment3
+      - CephStoragePostUpgradeConfig_Deployment3
+    properties:
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: ControllerPostUpgradeConfig_Config4}
+      input_values:
+        role: Controller
+        update_identifier: {get_param: UpdateIdentifier}
+  BlockStoragePostUpgradeConfig_Deployment4:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment3
+      - BlockStoragePostUpgradeConfig_Deployment3
+      - CephStoragePostUpgradeConfig_Deployment3
+    properties:
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: BlockStoragePostUpgradeConfig_Config4}
+      input_values:
+        role: BlockStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  CephStoragePostUpgradeConfig_Deployment4:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment3
+      - BlockStoragePostUpgradeConfig_Deployment3
+      - CephStoragePostUpgradeConfig_Deployment3
+    properties:
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: CephStoragePostUpgradeConfig_Config4}
+      input_values:
+        role: CephStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  ControllerPostUpgradeConfig_Config5:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment4
+      - BlockStoragePostUpgradeConfig_Deployment4
+      - CephStoragePostUpgradeConfig_Deployment4
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Controller, post_upgrade_tasks]}
+      step: 5
+  ComputePostUpgradeConfig_Config5:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment4
+      - BlockStoragePostUpgradeConfig_Deployment4
+      - CephStoragePostUpgradeConfig_Deployment4
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, Compute, post_upgrade_tasks]}
+      step: 5
+  BlockStoragePostUpgradeConfig_Config5:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment4
+      - BlockStoragePostUpgradeConfig_Deployment4
+      - CephStoragePostUpgradeConfig_Deployment4
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, BlockStorage, post_upgrade_tasks]}
+      step: 5
+  ObjectStoragePostUpgradeConfig_Config5:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment4
+      - BlockStoragePostUpgradeConfig_Deployment4
+      - CephStoragePostUpgradeConfig_Deployment4
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, ObjectStorage, post_upgrade_tasks]}
+      step: 5
+  CephStoragePostUpgradeConfig_Config5:
+    type: OS::TripleO::UpgradeConfig
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment4
+      - BlockStoragePostUpgradeConfig_Deployment4
+      - CephStoragePostUpgradeConfig_Deployment4
+    properties:
+      UpgradeStepConfig: {get_param: [role_data, CephStorage, post_upgrade_tasks]}
+      step: 5
+  ControllerPostUpgradeConfig_Deployment5:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment4
+      - BlockStoragePostUpgradeConfig_Deployment4
+      - CephStoragePostUpgradeConfig_Deployment4
+    properties:
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: ControllerPostUpgradeConfig_Config5}
+      input_values:
+        role: Controller
+        update_identifier: {get_param: UpdateIdentifier}
+  BlockStoragePostUpgradeConfig_Deployment5:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment4
+      - BlockStoragePostUpgradeConfig_Deployment4
+      - CephStoragePostUpgradeConfig_Deployment4
+    properties:
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: BlockStoragePostUpgradeConfig_Config5}
+      input_values:
+        role: BlockStorage
+        update_identifier: {get_param: UpdateIdentifier}
+  CephStoragePostUpgradeConfig_Deployment5:
+    type: OS::Heat::SoftwareDeploymentGroup
+    depends_on:
+      - ControllerPostUpgradeConfig_Deployment4
+      - BlockStoragePostUpgradeConfig_Deployment4
+      - CephStoragePostUpgradeConfig_Deployment4
+    properties:
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: CephStoragePostUpgradeConfig_Config5}
+      input_values:
+        role: CephStorage
+        update_identifier: {get_param: UpdateIdentifier}
+
+outputs:
+  # Output the config for each role, just use Step1 as the config should be
+  # the same for all steps (only the tag provided differs)
+  upgrade_configs:
+    description: The per-role upgrade configuration used
+    value:
+
+      controller: {get_attr: [ControllerUpgradeConfig_Step1, upgrade_config]}
+
+      compute: {get_attr: [ComputeUpgradeConfig_Step1, upgrade_config]}
+
+      blockstorage: {get_attr: [BlockStorageUpgradeConfig_Step1, upgrade_config]}
+
+      objectstorage: {get_attr: [ObjectStorageUpgradeConfig_Step1, upgrade_config]}
+
+      cephstorage: {get_attr: [CephStorageUpgradeConfig_Step1, upgrade_config]}
+
+  RoleConfig:
+    description: Mapping of config data for all roles
+    value: {get_attr: [AllNodesPostUpgradeSteps, RoleConfig]}

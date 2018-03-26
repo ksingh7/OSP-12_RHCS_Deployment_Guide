@@ -1,0 +1,214 @@
+heat_template_version: pike
+
+description: >
+  OpenStack containerized HAproxy service
+
+parameters:
+  DockerHAProxyImage:
+    description: image
+    type: string
+  DockerHAProxyConfigImage:
+    description: The container image to use for the haproxy config_volume
+    type: string
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  HAProxyStatsPassword:
+    description: Password for HAProxy stats endpoint
+    hidden: true
+    type: string
+  HAProxyStatsUser:
+    description: User for HAProxy stats endpoint
+    default: admin
+    type: string
+  HAProxySyslogAddress:
+    default: /dev/log
+    description: Syslog address where HAproxy will send its log
+    type: string
+  DeployedSSLCertificatePath:
+    default: '/etc/pki/tls/private/overcloud_endpoint.pem'
+    description: >
+        The filepath of the certificate as it will be stored in the controller.
+    type: string
+  RedisPassword:
+    description: The password for the redis service account.
+    type: string
+    hidden: true
+  MonitoringSubscriptionHaproxy:
+    default: 'overcloud-haproxy'
+    type: string
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EnableInternalTLS:
+    type: boolean
+    default: false
+  InternalTLSCAFile:
+    default: '/etc/ipa/ca.crt'
+    type: string
+    description: Specifies the default CA cert to use if TLS is used for
+                 services in the internal network.
+
+conditions:
+
+  internal_tls_enabled: {equals: [{get_param: EnableInternalTLS}, true]}
+
+resources:
+
+  ContainersCommon:
+    type: ./containers-common.yaml
+
+  HAProxyBase:
+    type: ../../puppet/services/haproxy.yaml
+    properties:
+      EndpointMap: {get_param: EndpointMap}
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+outputs:
+  role_data:
+    description: Role data for the HAproxy role.
+    value:
+      service_name: {get_attr: [HAProxyBase, role_data, service_name]}
+      config_settings:
+        map_merge:
+          - get_attr: [HAProxyBase, role_data, config_settings]
+          - tripleo::haproxy::haproxy_service_manage: false
+            # NOTE(jaosorior): We disable the CRL since we have no way to restart haproxy
+            # when this is updated
+            tripleo::haproxy::crl_file: null
+      logging_source: {get_attr: [HAProxyBase, role_data, logging_source]}
+      logging_groups: {get_attr: [HAProxyBase, role_data, logging_groups]}
+      step_config: &step_config
+        get_attr: [HAProxyBase, role_data, step_config]
+      service_config_settings: {get_attr: [HAProxyBase, role_data, service_config_settings]}
+      # BEGIN DOCKER SETTINGS
+      puppet_config:
+        config_volume: haproxy
+        puppet_tags: haproxy_config
+        step_config:
+          "class {'::tripleo::profile::base::haproxy': manage_firewall => false}"
+        config_image: {get_param: DockerHAProxyConfigImage}
+        volumes:
+          list_concat:
+          - - list_join:
+              - ':'
+              - - {get_param: DeployedSSLCertificatePath}
+                - {get_param: DeployedSSLCertificatePath}
+                - 'ro'
+          - if:
+            - internal_tls_enabled
+            - - /etc/pki/tls/certs/haproxy:/etc/pki/tls/certs/haproxy:ro
+              - /etc/pki/tls/private/haproxy:/etc/pki/tls/private/haproxy:ro
+              - list_join:
+                  - ':'
+                  - - {get_param: InternalTLSCAFile}
+                    - {get_param: InternalTLSCAFile}
+                    - 'ro'
+            - null
+      kolla_config:
+        /var/lib/kolla/config_files/haproxy.json:
+          command: /usr/sbin/haproxy-systemd-wrapper -f /etc/haproxy/haproxy.cfg
+          config_files:
+            - source: "/var/lib/kolla/config_files/src/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+            - source: "/var/lib/kolla/config_files/src-tls/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+              optional: true
+          permissions:
+            - path: /etc/pki/tls/certs/haproxy
+              owner: haproxy:haproxy
+              recurse: true
+              optional: true
+      docker_config:
+        step_1:
+          haproxy_firewall:
+            detach: false
+            image: {get_param: DockerHAProxyImage}
+            net: host
+            user: root
+            privileged: true
+            command:
+              - '/bin/bash'
+              - '-c'
+              - str_replace:
+                  template:
+                    list_join:
+                      - '; '
+                      - - "cp -a /tmp/puppet-etc/* /etc/puppet; echo '{\"step\": 1}' > /etc/puppet/hieradata/docker.json"
+                        - "FACTER_uuid=docker puppet apply --tags TAGS -v -e 'CONFIG'"
+                  params:
+                    TAGS: 'tripleo::firewall::rule'
+                    CONFIG: *step_config
+            volumes:
+              list_concat:
+                - {get_attr: [ContainersCommon, volumes]}
+                -
+                  - /var/lib/kolla/config_files/haproxy.json:/var/lib/kolla/config_files/config.json:ro
+                  - /var/lib/config-data/puppet-generated/haproxy/:/var/lib/kolla/config_files/src:ro
+                  # puppet saves iptables rules in /etc/sysconfig
+                  - /etc/sysconfig:/etc/sysconfig:rw
+                  # saving rules require accessing /usr/libexec/iptables/iptables.init, just bind-mount
+                  # the necessary bit and prevent systemd to try to reload the service in the container
+                  - /usr/libexec/iptables:/usr/libexec/iptables:ro
+                  - /usr/libexec/initscripts/legacy-actions:/usr/libexec/initscripts/legacy-actions:ro
+                  - /etc/puppet:/tmp/puppet-etc:ro
+                  - /usr/share/openstack-puppet/modules:/usr/share/openstack-puppet/modules:ro
+            environment:
+              - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+          haproxy:
+            image: {get_param: DockerHAProxyImage}
+            net: host
+            restart: always
+            volumes:
+              list_concat:
+                - {get_attr: [ContainersCommon, volumes]}
+                -
+                  - /var/lib/kolla/config_files/haproxy.json:/var/lib/kolla/config_files/config.json:ro
+                  - /var/lib/config-data/puppet-generated/haproxy/:/var/lib/kolla/config_files/src:ro
+                  - list_join:
+                    - ':'
+                    - - {get_param: DeployedSSLCertificatePath}
+                      - {get_param: DeployedSSLCertificatePath}
+                      - 'ro'
+                  -
+                    if:
+                      - internal_tls_enabled
+                      - /etc/pki/tls/certs/haproxy:/var/lib/kolla/config_files/src-tls/etc/pki/tls/certs/haproxy:ro
+                      - ''
+                  -
+                    if:
+                      - internal_tls_enabled
+                      - /etc/pki/tls/private/haproxy:/var/lib/kolla/config_files/src-tls/etc/pki/tls/private/haproxy:ro
+                      - ''
+            environment:
+              - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+      metadata_settings:
+        get_attr: [HAProxyBase, role_data, metadata_settings]

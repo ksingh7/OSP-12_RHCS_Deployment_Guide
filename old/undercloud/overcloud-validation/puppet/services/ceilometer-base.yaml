@@ -1,0 +1,185 @@
+heat_template_version: pike
+
+description: >
+  OpenStack Ceilometer service configured with Puppet
+
+parameters:
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  CeilometerMeteringSecret:
+    description: Secret shared by the ceilometer services.
+    type: string
+    hidden: true
+  CeilometerPassword:
+    description: The password for the ceilometer service account.
+    type: string
+    hidden: true
+  CeilometerWorkers:
+    default: 0
+    description: Number of workers for Ceilometer service.
+    type: number
+  ManageEventPipeline:
+    default: true
+    description: Whether to manage event_pipeline.yaml.
+    type: boolean
+  EventPipelinePublishers:
+    default: ['gnocchi://', 'panko://']
+    description: >
+        A list of publishers to put in event_pipeline.yaml. When the
+        collector is used, override this with notifier:// publisher.
+        If zaqar is enabled, you can also publish to a zaqar queue
+        by including "zaqar://?queue=queue_name" in this list.
+        Set ManageEventPipeline to true for override to take effect.
+    type: comma_delimited_list
+  ManagePipeline:
+    default: false
+    description: Whether to manage pipeline.yaml.
+    type: boolean
+  PipelinePublishers:
+    default: ['gnocchi://']
+    description: >
+        A list of publishers to put in pipeline.yaml. When the
+        collector is used, override this with notifier:// publisher.
+        Set ManagePipeline to true for override to take effect.
+    type: comma_delimited_list
+  Debug:
+    default: ''
+    description: Set to True to enable debugging on all services.
+    type: string
+  CeilometerDebug:
+    default: ''
+    description: Set to True to enable debugging Ceilometer services.
+    type: string
+  KeystoneRegion:
+    type: string
+    default: 'regionOne'
+    description: Keystone region for endpoint
+  RabbitPassword:
+    description: The password for RabbitMQ
+    type: string
+    hidden: true
+  RabbitUserName:
+    default: guest
+    description: The username for RabbitMQ
+    type: string
+  RabbitClientUseSSL:
+    default: false
+    description: >
+        Rabbit client subscriber parameter to specify
+        an SSL connection to the RabbitMQ host.
+    type: string
+  RabbitClientPort:
+    default: 5672
+    description: Set rabbit subscriber port, change this if using SSL
+    type: number
+  CeilometerApiEndpoint:
+    default: false
+    description: Whether to create or skip API endpoint. Set this to
+        false, if you choose to disable Ceilometer API service.
+    type: boolean
+  SnmpdReadonlyUserName:
+    default: ro_snmp_user
+    description: The user name for SNMPd with readonly rights running on all Overcloud nodes
+    type: string
+  SnmpdReadonlyUserPassword:
+    description: The user password for SNMPd with readonly rights running on all Overcloud nodes
+    type: string
+    hidden: true
+  NotificationDriver:
+    type: string
+    default: 'messagingv2'
+    description: Driver or drivers to handle sending notifications.
+    constraints:
+      - allowed_values: [ 'messagingv2', 'noop' ]
+  GnocchiArchivePolicy:
+    default: 'low'
+    type: string
+    description: archive policy to use with gnocchi backend
+
+conditions:
+  service_debug_unset: {equals : [{get_param: CeilometerDebug}, '']}
+
+outputs:
+  role_data:
+    description: Role data for the Ceilometer role.
+    value:
+      service_name: ceilometer_base
+      config_settings:
+        ceilometer::debug:
+          if:
+          - service_debug_unset
+          - {get_param: Debug }
+          - {get_param: CeilometerDebug }
+        ceilometer::keystone::authtoken::project_name: 'service'
+        ceilometer::keystone::authtoken::user_domain_name: 'Default'
+        ceilometer::keystone::authtoken::project_domain_name: 'Default'
+        ceilometer::keystone::authtoken::password: {get_param: CeilometerPassword}
+        ceilometer::keystone::authtoken::auth_uri: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix] }
+        ceilometer::keystone::authtoken::auth_url: { get_param: [EndpointMap, KeystoneInternal, uri_no_suffix] }
+        ceilometer::agent::auth::auth_password: {get_param: CeilometerPassword}
+        ceilometer::agent::auth::auth_url: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix] }
+        ceilometer::agent::notification::manage_event_pipeline: {get_param: ManageEventPipeline}
+        ceilometer::agent::notification::event_pipeline_publishers: {get_param: EventPipelinePublishers}
+        ceilometer::agent::notification::manage_pipeline: {get_param: ManagePipeline}
+        ceilometer::agent::notification::pipeline_publishers: {get_param: PipelinePublishers}
+        ceilometer::agent::auth::auth_region: {get_param: KeystoneRegion}
+        ceilometer::agent::auth::auth_tenant_name: 'service'
+        ceilometer::agent::auth::auth_user_domain_name: 'Default'
+        ceilometer::agent::auth::auth_project_domain_name: 'Default'
+        ceilometer::agent::auth::auth_endpoint_type: 'internalURL'
+        ceilometer::dispatcher::gnocchi::url: {get_param: [EndpointMap, GnocchiInternal, uri]}
+        ceilometer::dispatcher::gnocchi::filter_project: 'service'
+        ceilometer::dispatcher::gnocchi::archive_policy: {get_param: GnocchiArchivePolicy}
+        ceilometer::dispatcher::gnocchi::resources_definition_file: 'gnocchi_resources.yaml'
+        ceilometer::notification_driver: {get_param: NotificationDriver}
+        ceilometer::rabbit_userid: {get_param: RabbitUserName}
+        ceilometer::rabbit_password: {get_param: RabbitPassword}
+        ceilometer::rabbit_use_ssl: {get_param: RabbitClientUseSSL}
+        ceilometer::rabbit_port: {get_param: RabbitClientPort}
+        ceilometer::rabbit_heartbeat_timeout_threshold: 60
+        ceilometer::telemetry_secret: {get_param: CeilometerMeteringSecret}
+        ceilometer::snmpd_readonly_username: {get_param: SnmpdReadonlyUserName}
+        ceilometer::snmpd_readonly_user_password: {get_param: SnmpdReadonlyUserPassword}
+        ceilometer::host: '%{::fqdn}'
+      service_config_settings:
+        keystone:
+          ceilometer_auth_enabled: true
+          ceilometer::keystone::auth::public_url: {get_param: [EndpointMap, CeilometerPublic, uri]}
+          ceilometer::keystone::auth::internal_url: {get_param: [EndpointMap, CeilometerInternal, uri]}
+          ceilometer::keystone::auth::admin_url: {get_param: [EndpointMap, CeilometerAdmin, uri]}
+          ceilometer::keystone::auth::password: {get_param: CeilometerPassword}
+          ceilometer::keystone::auth::region: {get_param: KeystoneRegion}
+          ceilometer::keystone::auth::tenant: 'service'
+          ceilometer::keystone::auth::configure_endpoint: {get_param: CeilometerApiEndpoint}
+        mysql:
+          ceilometer::db::mysql::password: {get_param: CeilometerPassword}
+          ceilometer::db::mysql::user: ceilometer
+          ceilometer::db::mysql::host: {get_param: [EndpointMap, MysqlInternal, host_nobrackets]}
+          ceilometer::db::mysql::dbname: ceilometer
+          ceilometer::db::mysql::allowed_hosts:
+            - '%'
+            - "%{hiera('mysql_bind_host')}"

@@ -1,0 +1,8 @@
+heat_template_version: pike
+description: 'Noop Extra Pre-Deployment Config'
+parameters:
+  server:
+    type: string
+outputs:
+  deploy_stdout:
+    value: "None"

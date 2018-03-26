@@ -1,0 +1,125 @@
+heat_template_version: pike
+
+description: >
+  OpenStack containerized Aodh Notifier service
+
+parameters:
+  DockerAodhNotifierImage:
+    description: image
+    type: string
+  DockerAodhConfigImage:
+    description: The container image to use for the aodh config_volume
+    type: string
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  UpgradeRemoveUnusedPackages:
+    default: false
+    description: Remove package if the service is being disabled during upgrade
+    type: boolean
+
+resources:
+
+  ContainersCommon:
+    type: ./containers-common.yaml
+
+  MySQLClient:
+    type: ../../puppet/services/database/mysql-client.yaml
+
+  AodhNotifierBase:
+    type: ../../puppet/services/aodh-notifier.yaml
+    properties:
+      EndpointMap: {get_param: EndpointMap}
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+outputs:
+  role_data:
+    description: Role data for the Aodh API role.
+    value:
+      service_name: {get_attr: [AodhNotifierBase, role_data, service_name]}
+      config_settings:
+        map_merge:
+          - get_attr: [AodhNotifierBase, role_data, config_settings]
+      logging_source: {get_attr: [AodhNotifierBase, role_data, logging_source]}
+      logging_groups: {get_attr: [AodhNotifierBase, role_data, logging_groups]}
+      step_config: &step_config
+        list_join:
+          - "\n"
+          - - {get_attr: [AodhNotifierBase, role_data, step_config]}
+            - {get_attr: [MySQLClient, role_data, step_config]}
+      service_config_settings: {get_attr: [AodhNotifierBase, role_data, service_config_settings]}
+      # BEGIN DOCKER SETTINGS
+      puppet_config:
+        config_volume: aodh
+        puppet_tags: aodh_config
+        step_config: *step_config
+        config_image: {get_param: DockerAodhConfigImage}
+      kolla_config:
+        /var/lib/kolla/config_files/aodh_notifier.json:
+          command: /usr/bin/aodh-notifier
+          config_files:
+            - source: "/var/lib/kolla/config_files/src/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+          permissions:
+            - path: /var/log/aodh
+              owner: aodh:aodh
+              recurse: true
+      docker_config:
+        step_4:
+          aodh_notifier:
+            image: {get_param: DockerAodhNotifierImage}
+            net: host
+            privileged: false
+            restart: always
+            volumes:
+              list_concat:
+                - {get_attr: [ContainersCommon, volumes]}
+                -
+                  - /var/lib/kolla/config_files/aodh_notifier.json:/var/lib/kolla/config_files/config.json:ro
+                  - /var/lib/config-data/puppet-generated/aodh/:/var/lib/kolla/config_files/src:ro
+                  - /var/log/containers/aodh:/var/log/aodh
+            environment:
+              - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+      host_prep_tasks:
+        - name: create persistent logs directory
+          file:
+            path: /var/log/containers/aodh
+            state: directory
+      upgrade_tasks:
+        - name: Stop and disable openstack-aodh-notifier service
+          tags: step2
+          service: name=openstack-aodh-notifier.service state=stopped enabled=no
+        - name: Remove openstack-aodh-notifier package if operator requests it
+          yum: name=openstack-aodh-notifier state=removed
+          tags: step2
+          ignore_errors: True
+          when: {get_param: UpgradeRemoveUnusedPackages}

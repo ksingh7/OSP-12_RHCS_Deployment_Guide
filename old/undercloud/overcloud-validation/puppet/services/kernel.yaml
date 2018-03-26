@@ -1,0 +1,142 @@
+heat_template_version: pike
+
+description: >
+  Load kernel modules with kmod and configure kernel options with sysctl.
+
+parameters:
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  KernelPidMax:
+    default: 1048576
+    description: Configures sysctl kernel.pid_max key
+    type: number
+  KernelDisableIPv6:
+    default: 0
+    description: Configures sysctl net.ipv6.{default/all}.disable_ipv6 keys
+    type: number
+  NeighbourGcThreshold1:
+    default: 1024
+    description: Configures sysctl net.ipv4.neigh.default.gc_thresh1 value.
+                 This is the minimum number of entries to keep in the ARP
+                 cache. The garbage collector will not run if there are
+                 fewer than this number of entries in the cache.
+    type: number
+  NeighbourGcThreshold2:
+    default: 2048
+    description: Configures sysctl net.ipv4.neigh.default.gc_thresh2 value.
+                 This is the soft maximum number of entries to keep in the
+                 ARP cache. The garbage collector will  allow the number of
+                 entries to exceed this for 5 seconds before collection will
+                 be performed.
+    type: number
+  NeighbourGcThreshold3:
+    default: 4096
+    description: Configures sysctl net.ipv4.neigh.default.gc_thresh3 value.
+                 This is the hard maximum number of entries to keep in the
+                 ARP cache. The garbage collector will always run if there
+                 are more than this number of entries in the cache.
+    type: number
+  InotifyIntancesMax:
+    default: 1024
+    description: Configures sysctl fs.inotify.max_user_instances key
+    type: number
+
+
+outputs:
+  role_data:
+    description: Role data for the Kernel modules
+    value:
+      service_name: kernel
+      config_settings:
+        kernel_modules:
+          nf_conntrack: {}
+          nf_conntrack_proto_sctp: {}
+        sysctl_settings:
+          net.ipv4.tcp_keepalive_intvl:
+            value: 1
+          net.ipv4.tcp_keepalive_probes:
+            value: 5
+          net.ipv4.tcp_keepalive_time:
+            value: 5
+          net.ipv4.conf.default.send_redirects:
+            value: 0
+          net.ipv4.conf.all.send_redirects:
+            value: 0
+          net.ipv4.conf.all.arp_accept:
+            value: 1
+          net.ipv4.conf.default.accept_redirects:
+            value: 0
+          net.ipv4.conf.default.secure_redirects:
+            value: 0
+          net.ipv4.conf.all.secure_redirects:
+            value: 0
+          net.ipv4.conf.default.log_martians:
+            value: 1
+          net.ipv4.conf.all.log_martians:
+            value: 1
+          net.nf_conntrack_max:
+            value: 500000
+          net.netfilter.nf_conntrack_max:
+            value: 500000
+          net.ipv6.conf.default.disable_ipv6:
+            value: {get_param: KernelDisableIPv6}
+          net.ipv6.conf.all.disable_ipv6:
+            value: {get_param: KernelDisableIPv6}
+          # prevent neutron bridges from autoconfiguring ipv6 addresses
+          net.ipv6.conf.all.accept_ra:
+            value: 0
+          net.ipv6.conf.default.accept_ra:
+            value: 0
+          net.ipv6.conf.all.autoconf:
+            value: 0
+          net.ipv6.conf.default.autoconf:
+            value: 0
+          net.ipv6.conf.default.accept_redirects:
+            value: 0
+          net.ipv6.conf.all.accept_redirects:
+            value: 0
+          net.core.netdev_max_backlog:
+            value: 10000
+          kernel.pid_max:
+            value: {get_param: KernelPidMax}
+          kernel.dmesg_restrict:
+            value: 1
+          fs.suid_dumpable:
+            value: 0
+          #avoid neighbour table overflow on large deployments
+          net.ipv4.neigh.default.gc_thresh1:
+            value: {get_param: NeighbourGcThreshold1}
+          net.ipv4.neigh.default.gc_thresh2:
+            value: {get_param: NeighbourGcThreshold2}
+          net.ipv4.neigh.default.gc_thresh3:
+            value: {get_param: NeighbourGcThreshold3}
+          # set inotify value for neutron/dnsmasq scale
+          fs.inotify.max_user_instances:
+            value: {get_param: InotifyIntancesMax}
+
+      step_config: |
+        include ::tripleo::profile::base::kernel

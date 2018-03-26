@@ -1,0 +1,75 @@
+heat_template_version: pike
+
+description: >
+  HAProxy deployment with TLS enabled, powered by certmonger
+
+parameters:
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  HAProxyInternalTLSCertsDirectory:
+    default: '/etc/pki/tls/certs/haproxy'
+    type: string
+  HAProxyInternalTLSKeysDirectory:
+    default: '/etc/pki/tls/private/haproxy'
+    type: string
+  DeployedSSLCertificatePath:
+    default: '/etc/pki/tls/private/overcloud_endpoint.pem'
+    description: >
+        The filepath of the certificate as it will be stored in the controller.
+    type: string
+
+outputs:
+  role_data:
+    description: Role data for the HAProxy public TLS via certmonger role.
+    value:
+      service_name: haproxy_public_tls_certmonger
+      config_settings:
+        generate_service_certificates: true
+        tripleo::haproxy::service_certificate: {get_param: DeployedSSLCertificatePath}
+        tripleo::certmonger::haproxy_dirs::certificate_dir:
+          get_param: HAProxyInternalTLSCertsDirectory
+        tripleo::certmonger::haproxy_dirs::key_dir:
+          get_param: HAProxyInternalTLSKeysDirectory
+      certificates_specs:
+        haproxy-external:
+          service_pem: {get_param: DeployedSSLCertificatePath}
+          service_certificate:
+            list_join:
+            - ''
+            - - {get_param: HAProxyInternalTLSCertsDirectory}
+              - '/overcloud-haproxy-external.crt'
+          service_key:
+            list_join:
+            - ''
+            - - {get_param: HAProxyInternalTLSKeysDirectory}
+              - '/overcloud-haproxy-external.key'
+          hostname: "%{hiera('cloud_name_external')}"
+          principal: "haproxy/%{hiera('cloud_name_external')}"
+      metadata_settings:
+        - service: haproxy
+          network: external
+          type: vip

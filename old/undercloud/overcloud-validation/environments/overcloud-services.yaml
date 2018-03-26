@@ -1,0 +1,2 @@
+resource_registry:
+  OS::TripleO::DeployedServerEnvironment: ../deployed-server/deployed-server-environment-output.yaml

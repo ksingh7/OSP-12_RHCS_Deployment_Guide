@@ -1,0 +1,99 @@
+heat_template_version: pike
+
+description: >
+  HAProxy deployment with TLS enabled, powered by certmonger
+
+parameters:
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  HAProxyInternalTLSCertsDirectory:
+    default: '/etc/pki/tls/certs/haproxy'
+    type: string
+  HAProxyInternalTLSKeysDirectory:
+    default: '/etc/pki/tls/private/haproxy'
+    type: string
+
+resources:
+
+  HAProxyNetworks:
+    type: OS::Heat::Value
+    properties:
+      value:
+        # NOTE(jaosorior) Get unique network names to create
+        # certificates for those. We skip the tenant network since
+        # we don't need a certificate for that, and the external
+        # network will be handled in another template.
+        yaql:
+          expression: list($.data.map.items().map($1[1])).distinct().where($ != external and $ != tenant)
+          data:
+            map:
+              get_param: ServiceNetMap
+
+outputs:
+  role_data:
+    description: Role data for the HAProxy internal TLS via certmonger role.
+    value:
+      service_name: haproxy_internal_tls_certmonger
+      config_settings:
+        generate_service_certificates: true
+        tripleo::haproxy::use_internal_certificates: true
+        tripleo::certmonger::haproxy_dirs::certificate_dir:
+          get_param: HAProxyInternalTLSCertsDirectory
+        tripleo::certmonger::haproxy_dirs::key_dir:
+          get_param: HAProxyInternalTLSKeysDirectory
+      certificates_specs:
+        map_merge:
+          repeat:
+            template:
+              haproxy-NETWORK:
+                service_pem:
+                  list_join:
+                  - ''
+                  - - {get_param: HAProxyInternalTLSCertsDirectory}
+                    - '/overcloud-haproxy-NETWORK.pem'
+                service_certificate:
+                  list_join:
+                  - ''
+                  - - {get_param: HAProxyInternalTLSCertsDirectory}
+                    - '/overcloud-haproxy-NETWORK.crt'
+                service_key:
+                  list_join:
+                  - ''
+                  - - {get_param: HAProxyInternalTLSKeysDirectory}
+                    - '/overcloud-haproxy-NETWORK.key'
+                hostname: "%{hiera('cloud_name_NETWORK')}"
+                principal: "haproxy/%{hiera('cloud_name_NETWORK')}"
+            for_each:
+              NETWORK: {get_attr: [HAProxyNetworks, value]}
+      metadata_settings:
+        repeat:
+          template:
+          - service: haproxy
+            network: $NETWORK
+            type: vip
+          for_each:
+            $NETWORK: {get_attr: [HAProxyNetworks, value]}

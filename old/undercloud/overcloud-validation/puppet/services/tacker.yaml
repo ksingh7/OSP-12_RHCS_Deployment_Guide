@@ -1,0 +1,158 @@
+heat_template_version: pike
+
+description: >
+  OpenStack Tacker service configured with Puppet
+
+parameters:
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  TackerPassword:
+    description: The password for the tacker service account.
+    type: string
+    hidden: true
+  Debug:
+    type: string
+    default: ''
+    description: Set to True to enable debugging on all services.
+  TackerDebug:
+    default: ''
+    description: Set to True to enable debugging Tacker service.
+    type: string
+  KeystoneRegion:
+    type: string
+    default: 'regionOne'
+    description: Keystone region for endpoint
+  RabbitPassword:
+    description: The password for RabbitMQ
+    type: string
+    hidden: true
+  RabbitUserName:
+    default: guest
+    description: The username for RabbitMQ
+    type: string
+  RabbitClientUseSSL:
+    default: false
+    description: >
+        Rabbit client subscriber parameter to specify
+        an SSL connection to the RabbitMQ host.
+    type: string
+  RabbitClientPort:
+    default: 5672
+    description: Set rabbit subscriber port, change this if using SSL
+    type: number
+  TackerPolicies:
+    description: |
+      A hash of policies to configure for Tacker.
+      e.g. { tacker-context_is_admin: { key: context_is_admin, value: 'role:admin' } }
+    default: {}
+    type: json
+  NotificationDriver:
+    type: string
+    default: 'messagingv2'
+    description: Driver or drivers to handle sending notifications.
+    constraints:
+      - allowed_values: [ 'messagingv2', 'noop' ]
+
+conditions:
+  service_debug_unset: {equals : [{get_param: TackerDebug}, '']}
+
+outputs:
+  role_data:
+    description: Role data for the Tacker role.
+    value:
+      service_name: tacker
+      config_settings:
+        tacker_password: {get_param: TackerPassword}
+        tacker::db::database_connection:
+          make_url:
+            scheme: {get_param: [EndpointMap, MysqlInternal, protocol]}
+            username: tacker
+            password: {get_param: TackerPassword}
+            host: {get_param: [EndpointMap, MysqlInternal, host]}
+            path: /tacker
+            query:
+              read_default_file: /etc/my.cnf.d/tripleo.cnf
+              read_default_group: tripleo
+
+        tacker::debug:
+          if:
+          - service_debug_unset
+          - {get_param: Debug }
+          - {get_param: TackerDebug }
+        tacker::rpc_backend: rabbit
+        tacker::notification_driver: {get_param: NotificationDriver}
+        tacker::rabbit_userid: {get_param: RabbitUserName}
+        tacker::rabbit_password: {get_param: RabbitPassword}
+        tacker::rabbit_use_ssl: {get_param: RabbitClientUseSSL}
+        tacker::rabbit_port: {get_param: RabbitClientPort}
+        tacker::server::bind_host: {get_param: [ServiceNetMap, TackerApiNetwork]}
+
+        tacker::keystone::authtoken::project_name: 'service'
+        tacker::keystone::authtoken::user_domain_name: 'Default'
+        tacker::keystone::authtoken::project_domain_name: 'Default'
+        tacker::keystone::authtoken::password: {get_param: TackerPassword}
+        tacker::keystone::authtoken::auth_url: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix]}
+        tacker::keystone::authtoken::auth_uri: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix]}
+
+        tacker::db::mysql::password: {get_param: TackerPassword}
+        tacker::db::mysql::user: tacker
+        tacker::db::mysql::host: {get_param: [EndpointMap, MysqlInternal, host_nobrackets]}
+        tacker::db::mysql::dbname: tacker
+        tacker::db::mysql::allowed_hosts:
+          - '%'
+          - {get_param: [EndpointMap, MysqlInternal, host_nobrackets]}
+        tacker::policy::policies: {get_param: TackerPolicies}
+
+      service_config_settings:
+        keystone:
+          tacker::keystone::auth::tenant: 'service'
+          tacker::keystone::auth::region: {get_param: KeystoneRegion}
+          tacker::keystone::auth::password: {get_param: TackerPassword}
+          tacker::keystone::auth::public_url: {get_param: [EndpointMap, TackerPublic, uri]}
+          tacker::keystone::auth::internal_url: {get_param: [EndpointMap, TackerInternal, uri]}
+          tacker::keystone::auth::admin_url: {get_param: [EndpointMap, TackerAdmin, uri]}
+
+      step_config: |
+        include ::tripleo::profile::base::tacker
+      upgrade_tasks:
+        - name: Check if tacker is deployed
+          command: systemctl is-enabled openstack-tacker-server
+          tags: common
+          ignore_errors: True
+          register: tacker_enabled
+        - name: "PreUpgrade step0,validation: Check service openstack-tacker-server is running"
+          shell: /usr/bin/systemctl show 'openstack-tacker-server' --property ActiveState | grep '\bactive\b'
+          when: tacker_enabled.rc == 0
+          tags: step0,validation
+        - name: Stop tacker service
+          tags: step1
+          when: tacker_enabled.rc == 0
+          service: name=openstack-tacker-server state=stopped
+        - name: Install openstack-tacker package if it was disabled
+          tags: step3
+          yum: name=openstack-tacker state=latest
+          when: tacker_enabled.rc != 0

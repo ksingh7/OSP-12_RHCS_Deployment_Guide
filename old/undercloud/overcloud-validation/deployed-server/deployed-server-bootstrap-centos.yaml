@@ -1,0 +1,23 @@
+heat_template_version: pike
+
+description: 'Deployed Server Bootstrap Config'
+
+parameters:
+
+  server:
+    type: string
+
+resources:
+
+  DeployedServerBootstrapConfig:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      config: {get_file: deployed-server-bootstrap-centos.sh}
+
+  DeployedServerBootstrapDeployment:
+    type: OS::Heat::SoftwareDeployment
+    properties:
+      name: DeployedServerBootstrapDeployment
+      config: {get_resource: DeployedServerBootstrapConfig}
+      server: {get_param: server}

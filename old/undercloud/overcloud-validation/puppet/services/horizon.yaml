@@ -1,0 +1,158 @@
+heat_template_version: pike
+
+description: >
+  Horizon service configured with Puppet
+
+parameters:
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  Debug:
+    default: ''
+    description: Set to True to enable debugging on all services.
+    type: string
+  HorizonDebug:
+    default: false
+    description: Set to True to enable debugging Horizon service.
+    type: string
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  HorizonAllowedHosts:
+    default: '*'
+    description: A list of IP/Hostname for the server Horizon is running on.
+                 Used for header checks.
+    type: comma_delimited_list
+  HorizonPasswordValidator:
+    description: Regex for password validation
+    type: string
+    default: ''
+  HorizonPasswordValidatorHelp:
+    description: Help text for password validation
+    type: string
+    default: ''
+  HorizonSecret:
+    description: Secret key for Django
+    type: string
+    hidden: true
+    default: ''
+  HorizonSecureCookies:
+    description: Set CSRF_COOKIE_SECURE / SESSION_COOKIE_SECURE in Horizon
+    type: boolean
+    default: false
+  MemcachedIPv6:
+    default: false
+    description: Enable IPv6 features in Memcached.
+    type: boolean
+  MonitoringSubscriptionHorizon:
+    default: 'overcloud-horizon'
+    type: string
+  EnableInternalTLS:
+    type: boolean
+    default: false
+  InternalTLSCAFile:
+    default: '/etc/ipa/ca.crt'
+    type: string
+    description: Specifies the default CA cert to use if TLS is used for
+                 services in the internal network.
+
+conditions:
+
+  debug_unset: {equals : [{get_param: Debug}, '']}
+
+outputs:
+  role_data:
+    description: Role data for the Horizon role.
+    value:
+      service_name: horizon
+      monitoring_subscription: {get_param: MonitoringSubscriptionHorizon}
+      config_settings:
+        map_merge:
+        - horizon::allowed_hosts: {get_param: HorizonAllowedHosts}
+          tripleo.horizon.firewall_rules:
+            '126 horizon':
+              dport:
+                - 80
+                - 443
+          horizon::enable_secure_proxy_ssl_header: true
+          horizon::disable_password_reveal: true
+          horizon::enforce_password_check: true
+          horizon::disallow_iframe_embed: true
+          horizon::cache_backend: django.core.cache.backends.memcached.MemcachedCache
+          horizon::django_session_engine: 'django.contrib.sessions.backends.cache'
+          horizon::vhost_extra_params:
+            priority: 10
+            access_log_format: '%a %l %u %t \"%r\" %>s %b \"%%{}{Referer}i\" \"%%{}{User-Agent}i\"'
+            options: ['FollowSymLinks','MultiViews']
+          horizon::bind_address: {get_param: [ServiceNetMap, HorizonNetwork]}
+          horizon::keystone_url: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix]}
+          horizon::password_validator: {get_param: [HorizonPasswordValidator]}
+          horizon::password_validator_help: {get_param: [HorizonPasswordValidatorHelp]}
+          horizon::secret_key:
+            yaql:
+              expression: $.data.passwords.where($ != '').first()
+              data:
+                passwords:
+                  - {get_param: HorizonSecret}
+                  - {get_param: [DefaultPasswords, horizon_secret]}
+          horizon::secure_cookies: {get_param: [HorizonSecureCookies]}
+          memcached_ipv6: {get_param: MemcachedIPv6}
+          horizon::servername:
+            str_replace:
+              template:
+                "%{hiera('fqdn_$NETWORK')}"
+              params:
+                $NETWORK: {get_param: [ServiceNetMap, HorizonNetwork]}
+          horizon::listen_ssl: {get_param: EnableInternalTLS}
+          horizon::horizon_ca: {get_param: InternalTLSCAFile}
+        -
+          if:
+          - debug_unset
+          - horizon::django_debug: { get_param: HorizonDebug }
+          - horizon::django_debug: { get_param: Debug }
+      step_config: |
+        include ::tripleo::profile::base::horizon
+      # Ansible tasks to handle upgrade
+      upgrade_tasks:
+        - name: Check if httpd is deployed
+          command: systemctl is-enabled httpd
+          tags: common
+          ignore_errors: True
+          register: httpd_enabled
+        - name: "PreUpgrade step0,validation: Check if httpd is running"
+          shell: >
+            /usr/bin/systemctl show 'httpd' --property ActiveState |
+            grep '\bactive\b'
+          when: httpd_enabled.rc == 0
+          tags: step0,validation
+        - name: Stop Horizon (under httpd)
+          tags: step1
+          when: httpd_enabled.rc == 0
+          service: name=httpd state=stopped
+      service_config_settings:
+        haproxy:
+          tripleo.horizon.firewall_rules:
+            '127 horizon':
+              dport:
+                - 80
+                - 443

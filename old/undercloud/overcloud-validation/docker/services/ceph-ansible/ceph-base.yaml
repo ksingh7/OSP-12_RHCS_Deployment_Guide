@@ -1,0 +1,296 @@
+heat_template_version: pike
+
+description: >
+  Ceph base service. Shared by all Ceph services.
+
+parameters:
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  StackUpdateType:
+    type: string
+    description: >
+      Type of update, to differentiate between UPGRADE and UPDATE cases
+      when StackAction is UPDATE (both are the same stack action).
+    constraints:
+    - allowed_values: ['', 'UPGRADE']
+    default: ''
+  NodeDataLookup:
+    type: string
+    default: '{}'
+    description: json string containing per-node configuration map
+  CephAnsibleWorkflowName:
+    type: string
+    description: Name of the Mistral workflow to execute
+    default: tripleo.storage.v1.ceph-install
+  CephAnsiblePlaybook:
+    type: string
+    description: Path to the ceph-ansible playbook to execute
+    default: /usr/share/ceph-ansible/site-docker.yml.sample
+  CephAnsibleUpgradePlaybook:
+    type: string
+    description: Path to the ceph-ansible playbook to execute on upgrade
+    default: /usr/share/ceph-ansible/infrastructure-playbooks/switch-from-non-containerized-to-containerized-ceph-daemons.yml
+  CephAnsibleExtraConfig:
+    type: json
+    description: Extra vars for the ceph-ansible playbook
+    default: {}
+  CephAnsibleSkipTags:
+    type: string
+    description: List of ceph-ansible tags to skip
+    default: 'package-install,with_pkg'
+  CephConfigOverrides:
+    type: json
+    description: Extra config settings to dump into ceph.conf
+    default: {}
+  CephClusterFSID:
+    type: string
+    description: The Ceph cluster FSID. Must be a UUID.
+  CephPoolDefaultPgNum:
+    description: default pg_num to use for the RBD pools
+    type: number
+    default: 128
+  CephPools:
+    description: >
+      It can be used to override settings for one of the predefined pools, or to create
+      additional ones. Example:
+      [{"name": "volumes", "pg_num": 64, "rule_name": ""}]
+    default: []
+    type: json
+  CinderRbdPoolName:
+    default: volumes
+    type: string
+  CinderBackupRbdPoolName:
+    default: backups
+    type: string
+  GlanceRbdPoolName:
+    default: images
+    type: string
+  GnocchiRbdPoolName:
+    default: metrics
+    type: string
+  NovaRbdPoolName:
+    default: vms
+    type: string
+  CephClientKey:
+    description: The Ceph client key. Can be created with ceph-authtool --gen-print-key.
+    type: string
+    hidden: true
+  CephClientUserName:
+    default: openstack
+    type: string
+  CephRgwClientName:
+    default: radosgw
+    type: string
+  CephRgwKey:
+    description: The cephx key for the radosgw client. Can be created
+                 with ceph-authtool --gen-print-key.
+    type: string
+    hidden: true
+  CephPoolDefaultSize:
+    description: default minimum replication for RBD copies
+    type: number
+    default: 3
+  ManilaCephFSNativeCephFSAuthId:
+    default: manila
+    type: string
+  CephManilaClientKey:
+    default: ''
+    description: The Ceph client key. Can be created with ceph-authtool --gen-print-key.
+    type: string
+    hidden: true
+  CephIPv6:
+    default: False
+    type: boolean
+  SwiftPassword:
+    description: The password for the swift service account
+    type: string
+    hidden: true
+  DockerCephDaemonImage:
+    description: image
+    type: string
+  CephAnsiblePlaybookVerbosity:
+    default: 0
+    description: number of '-v', '-vv', etc. passed to ansible-playbook command (max 5)
+    type: number
+
+conditions:
+  custom_registry_host:
+    yaql:
+      data: {get_param: DockerCephDaemonImage}
+      expression: $.data.split('/')[0].matches('(\.|:)')
+  perform_upgrade:
+    equals: [{get_param: StackUpdateType}, 'UPGRADE']
+
+resources:
+  DockerImageUrlParts:
+    type: OS::Heat::Value
+    properties:
+      type: json
+      value:
+        host:
+          if:
+          - custom_registry_host
+          - yaql:
+              expression: let(location => $.data.rightSplit(':', 1)[0]) -> regex('(?:https?://)?(.*?)/(.*)').split($location)[1]
+              data: {get_param: DockerCephDaemonImage}
+          - docker.io
+        image:
+          if:
+          - custom_registry_host
+          - yaql:
+              expression: let(location => $.data.rightSplit(':', 1)[0]) -> regex('(?:https?://)?(.*?)/(.*)').split($location)[2]
+              data: {get_param: DockerCephDaemonImage}
+          - yaql:
+              expression: $.data.rightSplit(':', 1)[0]
+              data: {get_param: DockerCephDaemonImage}
+        image_tag:
+          yaql:
+            expression: $.data.rightSplit(':', 1)[1]
+            data: {get_param: DockerCephDaemonImage}
+
+outputs:
+  role_data:
+    description: Role data for the Ceph base service.
+    value:
+      service_name: ceph_base
+      upgrade_tasks: []
+      step_config: ''
+      puppet_config:
+        config_image: ''
+        config_volume: ''
+        step_config: ''
+      docker_config: {}
+      workflow_tasks:
+        step2:
+          - name: ceph_base_ansible_workflow
+            workflow: { get_param: CephAnsibleWorkflowName }
+            input:
+              ansible_skip_tags: {get_param: CephAnsibleSkipTags}
+              ceph_ansible_extra_vars: {get_param: CephAnsibleExtraConfig}
+              ceph_ansible_playbook:
+                if:
+                  - perform_upgrade
+                  - {get_param: CephAnsibleUpgradePlaybook}
+                  - {get_param: CephAnsiblePlaybook}
+              ansible_playbook_verbosity: {get_param: CephAnsiblePlaybookVerbosity}
+              node_data_lookup: {get_param: NodeDataLookup}
+      config_settings:
+        ceph_common_ansible_vars:
+          ireallymeanit: 'yes'
+          fsid: { get_param: CephClusterFSID }
+          docker: true
+          ceph_release: jewel
+          ceph_docker_registry: {get_attr: [DockerImageUrlParts, value, host]}
+          ceph_docker_image: {get_attr: [DockerImageUrlParts, value, image]}
+          ceph_docker_image_tag: {get_attr: [DockerImageUrlParts, value, image_tag]}
+          containerized_deployment: true
+          public_network: {get_param: [ServiceData, net_cidr_map, {get_param: [ServiceNetMap, CephMonNetwork]}]}
+          monitor_address_block: {get_param: [ServiceData, net_cidr_map, {get_param: [ServiceNetMap, CephMonNetwork]}]}
+          cluster_network: {get_param: [ServiceData, net_cidr_map, {get_param: [ServiceNetMap, CephClusterNetwork]}]}
+          user_config: true
+          ceph_stable: true
+          ceph_origin: distro
+          openstack_config: true
+          openstack_pools:
+            yaql:
+              expression: $.data.toDict($.get('name')).values()
+              data:
+                list_concat_unique:
+                  - repeat:
+                      template:
+                        name: <%pool%>
+                        pg_num: {get_param: CephPoolDefaultPgNum}
+                        rule_name: ""
+                      for_each:
+                        <%pool%>:
+                          - {get_param: CinderRbdPoolName}
+                          - {get_param: CinderBackupRbdPoolName}
+                          - {get_param: NovaRbdPoolName}
+                          - {get_param: GlanceRbdPoolName}
+                          - {get_param: GnocchiRbdPoolName}
+                  - {get_param: CephPools}
+          openstack_keys: &openstack_keys
+          - name:
+              list_join:
+              - '.'
+              - - client
+                - {get_param: CephClientUserName}
+            key: {get_param: CephClientKey}
+            mon_cap: "allow r"
+            osd_cap:
+              str_replace:
+               template: "allow class-read object_prefix rbd_children, allow rwx pool=CINDER_POOL, allow rwx pool=CINDERBACKUP_POOL, allow rwx pool=NOVA_POOL, allow rwx pool=GLANCE_POOL, allow rwx pool=GNOCCHI_POOL"
+               params:
+                 NOVA_POOL: {get_param: NovaRbdPoolName}
+                 CINDER_POOL: {get_param: CinderRbdPoolName}
+                 CINDERBACKUP_POOL: {get_param: CinderBackupRbdPoolName}
+                 GLANCE_POOL: {get_param: GlanceRbdPoolName}
+                 GNOCCHI_POOL: {get_param: GnocchiRbdPoolName}
+            mode: "0644"
+          - name:
+              list_join:
+              - '.'
+              - - client
+                - {get_param: ManilaCephFSNativeCephFSAuthId}
+            key: {get_param: CephManilaClientKey}
+            mon_cap: 'allow r, allow command \\\"auth del\\\", allow command \\\"auth caps\\\", allow command \\\"auth get\\\", allow command \\\"auth get-or-create\\\"'
+            mds_cap: "allow *"
+            osd_cap: "allow rw"
+            mode: "0644"
+          - name:
+              list_join:
+              - '.'
+              - - client
+                - {get_param: CephRgwClientName}
+            key: {get_param: CephRgwKey}
+            mon_cap: "allow rw"
+            osd_cap: "allow rwx"
+            mode: "0644"
+          keys: *openstack_keys
+          pools: []
+          ceph_conf_overrides:
+            global:
+              map_merge:
+                - osd_pool_default_size: {get_param: CephPoolDefaultSize}
+                  osd_pool_default_pg_num: {get_param: CephPoolDefaultPgNum}
+                  osd_pool_default_pgp_num: {get_param: CephPoolDefaultPgNum}
+                  rgw_keystone_api_version: 3
+                  rgw_keystone_url: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix]}
+                  rgw_keystone_accepted_roles: 'Member, _member_, admin'
+                  rgw_keystone_admin_domain: default
+                  rgw_keystone_admin_project: service
+                  rgw_keystone_admin_user: swift
+                  rgw_keystone_admin_password: {get_param: SwiftPassword}
+                  rgw_s3_auth_use_keystone: 'true'
+                - {get_param: CephConfigOverrides}
+          ntp_service_enabled: false
+          generate_fsid: false
+          ip_version:
+            if:
+            - {get_param: CephIPv6}
+            - ipv6
+            - ipv4

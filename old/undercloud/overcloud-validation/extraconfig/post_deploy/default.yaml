@@ -1,0 +1,5 @@
+heat_template_version: pike
+description: 'Extra Post Deployment Config'
+parameters:
+  servers:
+    type: json

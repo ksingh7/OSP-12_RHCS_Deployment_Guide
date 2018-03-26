@@ -1,0 +1,134 @@
+heat_template_version: pike
+
+description: >
+  OpenStack containerized Ceilometer Agent Compute service
+
+parameters:
+  DockerCeilometerComputeImage:
+    description: image
+    type: string
+  DockerCeilometerConfigImage:
+    description: The container image to use for the ceilometer config_volume
+    type: string
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  UpgradeRemoveUnusedPackages:
+    default: false
+    description: Remove package if the service is being disabled during upgrade
+    type: boolean
+
+resources:
+
+  ContainersCommon:
+    type: ./containers-common.yaml
+
+  CeilometerAgentComputeBase:
+    type: ../../puppet/services/ceilometer-agent-compute.yaml
+    properties:
+      EndpointMap: {get_param: EndpointMap}
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+outputs:
+  role_data:
+    description: Role data for the Ceilometer Agent Compute role.
+    value:
+      service_name: {get_attr: [CeilometerAgentComputeBase, role_data, service_name]}
+      config_settings: {get_attr: [CeilometerAgentComputeBase, role_data, config_settings]}
+      logging_source: {get_attr: [CeilometerAgentComputeBase, role_data, logging_source]}
+      logging_groups: {get_attr: [CeilometerAgentComputeBase, role_data, logging_groups]}
+      step_config: &step_config
+        get_attr: [CeilometerAgentComputeBase, role_data, step_config]
+      service_config_settings: {get_attr: [CeilometerAgentComputeBase, role_data, service_config_settings]}
+      # BEGIN DOCKER SETTINGS
+      puppet_config:
+        config_volume: ceilometer
+        puppet_tags: ceilometer_config
+        step_config: *step_config
+        config_image: {get_param: DockerCeilometerConfigImage}
+      kolla_config:
+        /var/lib/kolla/config_files/ceilometer_agent_compute.json:
+          command: /usr/bin/ceilometer-polling --polling-namespaces compute --logfile /var/log/ceilometer/compute.log
+          config_files:
+            - source: "/var/lib/kolla/config_files/src/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+      docker_config:
+        step_4:
+          ceilometer_agent_compute:
+            image: {get_param: DockerCeilometerComputeImage}
+            net: host
+            privileged: false
+            restart: always
+            volumes:
+              list_concat:
+                - {get_attr: [ContainersCommon, volumes]}
+                -
+                  - /var/lib/kolla/config_files/ceilometer_agent_compute.json:/var/lib/kolla/config_files/config.json:ro
+                  - /var/lib/config-data/puppet-generated/ceilometer/:/var/lib/kolla/config_files/src:ro
+                  - /var/run/libvirt:/var/run/libvirt:ro
+                  - /var/log/containers/ceilometer:/var/log/ceilometer
+            environment:
+              - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+      host_prep_tasks:
+        - name: create persistent logs directory
+          file:
+            path: /var/log/containers/ceilometer
+            state: directory
+      upgrade_tasks:
+        - name: Check if openstack-ceilometer-compute is deployed
+          command: systemctl is-enabled openstack-ceilometer-compute
+          tags: step2
+          ignore_errors: True
+          register: openstack_ceilometer_compute_enabled
+        - name: Check if openstack-ceilometer-polling is deployed
+          command: systemctl is-enabled openstack-ceilometer-polling
+          tags: step2
+          ignore_errors: True
+          register: openstack_ceilometer_polling_enabled
+        - name: Stop and disable ceilometer compute agent
+          tags: step2
+          service: name=openstack-ceilometer-compute state=stopped enabled=no
+          when: openstack_ceilometer_compute_enabled.rc|default('') == 0
+        - name: Stop and disable ceilometer polling agent
+          tags: step2
+          service: name=openstack-ceilometer-polling state=stopped enabled=no
+          when: openstack_ceilometer_polling_enabled.rc|default('') == 0
+        - name: Remove openstack-ceilometer-compute package if operator requests it
+          yum: name=openstack-ceilometer-compute state=removed
+          tags: step2
+          ignore_errors: True
+          when: {get_param: UpgradeRemoveUnusedPackages}
+        - name: Remove openstack-ceilometer-polling package if operator requests it
+          yum: name=openstack-ceilometer-polling state=removed
+          tags: step2
+          ignore_errors: True
+          when: {get_param: UpgradeRemoveUnusedPackages}

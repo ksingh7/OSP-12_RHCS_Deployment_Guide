@@ -1,0 +1,122 @@
+heat_template_version: pike
+
+description: >
+  OpenStack containerized Nova Metadata service
+
+parameters:
+  DockerNovaMetadataImage:
+    description: image
+    type: string
+  DockerNovaConfigImage:
+    description: The container image to use for the nova config_volume
+    type: string
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+
+resources:
+
+  ContainersCommon:
+    type: ./containers-common.yaml
+
+  NovaMetadataBase:
+    type: ../../puppet/services/nova-metadata.yaml
+    properties:
+      EndpointMap: {get_param: EndpointMap}
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+outputs:
+  role_data:
+    description: Role data for the Nova Metadata service.
+    value:
+      service_name: {get_attr: [NovaMetadataBase, role_data, service_name]}
+      config_settings:
+        map_merge:
+          - get_attr: [NovaMetadataBase, role_data, config_settings]
+      logging_source: {get_attr: [NovaMetadataBase, role_data, logging_source]}
+      logging_groups: {get_attr: [NovaMetadataBase, role_data, logging_groups]}
+      step_config: &step_config
+        get_attr: [NovaMetadataBase, role_data, step_config]
+      service_config_settings: {get_attr: [NovaMetadataBase, role_data, service_config_settings]}
+      # BEGIN DOCKER SETTINGS
+      puppet_config:
+        config_volume: nova
+        puppet_tags: nova_config
+        step_config: *step_config
+        config_image: {get_param: DockerNovaConfigImage}
+      kolla_config:
+        /var/lib/kolla/config_files/nova_metadata.json:
+          command: /usr/bin/nova-api-metadata
+          config_files:
+            - source: "/var/lib/kolla/config_files/src/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+          permissions:
+            - path: /var/log/nova
+              owner: nova:nova
+              recurse: true
+      docker_config:
+        step_2:
+          nova_init_logs:
+            image: &nova_metadata_image {get_param: DockerNovaMetadataImage}
+            privileged: false
+            user: root
+            volumes:
+              - /var/log/containers/nova:/var/log/nova
+            command: ['/bin/bash', '-c', 'chown -R nova:nova /var/log/nova']
+        step_4:
+          nova_metadata:
+            start_order: 2
+            image: *nova_metadata_image
+            net: host
+            user: nova
+            privileged: true
+            restart: always
+            volumes:
+              list_concat:
+                - {get_attr: [ContainersCommon, volumes]}
+                -
+                  - /var/lib/kolla/config_files/nova_metadata.json:/var/lib/kolla/config_files/config.json:ro
+                  - /var/lib/config-data/puppet-generated/nova/:/var/lib/kolla/config_files/src:ro
+                  - /var/log/containers/nova:/var/log/nova
+            environment:
+              - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+      metadata_settings:
+        get_attr: [NovaMetadataBase, role_data, metadata_settings]
+      host_prep_tasks:
+        - name: create persistent logs directory
+          file:
+            path: /var/log/containers/nova
+            state: directory
+      upgrade_tasks:
+        - name: Stop and disable nova_api service
+          tags: step2
+          service: name=openstack-nova-api state=stopped enabled=no

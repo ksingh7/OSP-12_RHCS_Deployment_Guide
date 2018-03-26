@@ -1,0 +1,57 @@
+heat_template_version: pike
+
+description: >
+  TripleO Firewall settings
+
+parameters:
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ManageFirewall:
+    default: true
+    description: Whether to manage IPtables rules.
+    type: boolean
+  PurgeFirewallRules:
+    default: false
+    description: Whether IPtables rules should be purged before setting up the new ones.
+    type: boolean
+
+outputs:
+  role_data:
+    description: Role data for the TripleO firewall settings
+    value:
+      service_name: tripleo_firewall
+      config_settings:
+        tripleo::firewall::manage_firewall: {get_param: ManageFirewall}
+        tripleo::firewall::purge_firewall_rules: {get_param: PurgeFirewallRules}
+      step_config: |
+        include ::tripleo::firewall
+      upgrade_tasks:
+        - name: blank ipv6 rule before activating ipv6 firewall.
+          tags: step3
+          shell: cat /etc/sysconfig/ip6tables > /etc/sysconfig/ip6tables.n-o-upgrade; cat</dev/null>/etc/sysconfig/ip6tables
+          args:
+            creates: /etc/sysconfig/ip6tables.n-o-upgrade

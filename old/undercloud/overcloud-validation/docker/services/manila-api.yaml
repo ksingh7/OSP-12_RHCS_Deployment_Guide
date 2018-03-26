@@ -1,0 +1,137 @@
+heat_template_version: pike
+
+description: >
+  OpenStack containerized Manila API service
+
+parameters:
+  DockerManilaApiImage:
+    description: image
+    type: string
+  DockerManilaConfigImage:
+    description: The container image to use for the manila config_volume
+    type: string
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+
+resources:
+
+  ContainersCommon:
+    type: ./containers-common.yaml
+
+  MySQLClient:
+    type: ../../puppet/services/database/mysql-client.yaml
+
+  ManilaApiPuppetBase:
+    type: ../../puppet/services/manila-api.yaml
+    properties:
+      EndpointMap: {get_param: EndpointMap}
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+
+outputs:
+  role_data:
+    description: Role data for the Manila API role.
+    value:
+      service_name: {get_attr: [ManilaApiPuppetBase, role_data, service_name]}
+      config_settings: {get_attr: [ManilaApiPuppetBase, role_data, config_settings]}
+      logging_source: {get_attr: [ManilaApiPuppetBase, role_data, logging_source]}
+      logging_groups: {get_attr: [ManilaApiPuppetBase, role_data, logging_groups]}
+      step_config: &step_config
+        list_join:
+          - "\n"
+          - - {get_attr: [ManilaApiPuppetBase, role_data, step_config]}
+            - {get_attr: [MySQLClient, role_data, step_config]}
+      service_config_settings: {get_attr: [ManilaApiPuppetBase, role_data, service_config_settings]}
+      # BEGIN DOCKER SETTINGS #
+      puppet_config:
+        config_volume: manila
+        puppet_tags: manila_config,manila_api_paste_ini
+        step_config: *step_config
+        config_image: {get_param: DockerManilaConfigImage}
+      kolla_config:
+        /var/lib/kolla/config_files/manila_api.json:
+          command: /usr/bin/manila-api --config-file /usr/share/manila/manila-dist.conf --config-file /etc/manila/manila.conf
+          config_files:
+            - source: "/var/lib/kolla/config_files/src/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+          permissions:
+            - path: /var/log/manila
+              owner: manila:manila
+              recurse: true
+      docker_config:
+        step_2:
+          manila_init_logs:
+            image: &manila_api_image {get_param: DockerManilaApiImage}
+            user: root
+            volumes:
+              - /var/log/containers/manila:/var/log/manila
+              - /var/log/containers/httpd/manila-api:/var/log/httpd
+            command: ['/bin/bash', '-c', 'chown -R manila:manila /var/log/manila']
+        step_3:
+          manila_api_db_sync:
+            user: root
+            image: *manila_api_image
+            net: host
+            detach: false
+            volumes:
+              list_concat:
+                - {get_attr: [ContainersCommon, volumes]}
+                -
+                  - /var/lib/config-data/manila/etc/manila/:/etc/manila/:ro
+                  - /var/log/containers/manila:/var/log/manila
+                  - /var/log/containers/httpd/manila-api:/var/log/httpd
+            command: "/usr/bin/bootstrap_host_exec manila_api su manila -s /bin/bash -c '/usr/bin/manila-manage db sync'"
+        step_4:
+          manila_api:
+            image: *manila_api_image
+            net: host
+            restart: always
+            volumes:
+              list_concat:
+                - {get_attr: [ContainersCommon, volumes]}
+                -
+                  - /var/lib/kolla/config_files/manila_api.json:/var/lib/kolla/config_files/config.json:ro
+                  - /var/lib/config-data/puppet-generated/manila/:/var/lib/kolla/config_files/src:ro
+                  - /var/log/containers/manila:/var/log/manila
+                  - /var/log/containers/httpd/manila-api:/var/log/httpd
+            environment:
+              - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+      host_prep_tasks:
+        - name: Create persistent manila logs directory
+          file:
+            path: "{{ item }}"
+            state: directory
+          with_items:
+            - /var/log/containers/manila
+            - /var/log/containers/httpd/manila-api
+      upgrade_tasks:
+        - name: Stop and disable manila_api service
+          tags: step2
+          service: name=openstack-manila-api state=stopped enabled=no

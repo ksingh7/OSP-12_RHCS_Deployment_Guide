@@ -1,0 +1,15 @@
+{
+    "nodes":[
+        {
+            "mac":[
+                "A0:36:9F:91:5B:8C"
+            ],
+            "name": "r220-03",
+            "arch":"x86_64",
+            "pm_type":"pxe_ipmitool",
+            "pm_user":"root",
+            "pm_password":"ipmipass",
+            "pm_addr":"172.21.32.14"
+        }
+    ]
+}

@@ -1,0 +1,186 @@
+heat_template_version: pike
+
+description: >
+  Openstack Heat base service. Shared for all Heat services.
+
+parameters:
+  Debug:
+    default: ''
+    description: Set to True to enable debugging on all services.
+    type: string
+  HeatDebug:
+    default: ''
+    description: Set to True to enable debugging Heat services.
+    type: string
+  RabbitPassword:
+    description: The password for RabbitMQ
+    type: string
+    hidden: true
+  RabbitUserName:
+    default: guest
+    description: The username for RabbitMQ
+    type: string
+  RabbitClientUseSSL:
+    default: false
+    description: >
+        Rabbit client subscriber parameter to specify
+        an SSL connection to the RabbitMQ host.
+    type: string
+  RabbitClientPort:
+    default: 5672
+    description: Set rabbit subscriber port, change this if using SSL
+    type: number
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  HeatPassword:
+    description: The password for the Heat service and db account, used by the Heat services.
+    type: string
+    hidden: true
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  HeatCronPurgeDeletedEnsure:
+    type: string
+    description: >
+        Cron to purge db entries marked as deleted and older than $age - Ensure
+    default: 'present'
+  HeatCronPurgeDeletedMinute:
+    type: string
+    description: >
+        Cron to purge db entries marked as deleted and older than $age - Minute
+    default: '1'
+  HeatCronPurgeDeletedHour:
+    type: string
+    description: >
+        Cron to purge db entries marked as deleted and older than $age - Hour
+    default: '0'
+  HeatCronPurgeDeletedMonthday:
+    type: string
+    description: >
+        Cron to purge db entries marked as deleted and older than $age - Month Day
+    default: '*'
+  HeatCronPurgeDeletedMonth:
+    type: string
+    description: >
+        Cron to purge db entries marked as deleted and older than $age - Month
+    default: '*'
+  HeatCronPurgeDeletedWeekday:
+    type: string
+    description: >
+        Cron to purge db entries marked as deleted and older than $age - Week Day
+    default: '*'
+  HeatCronPurgeDeletedMaxDelay:
+    type: string
+    description: >
+        Cron to purge db entries marked as deleted and older than $age - Max Delay
+    default: '3600'
+  HeatCronPurgeDeletedUser:
+    type: string
+    description: >
+        Cron to purge db entries marked as deleted and older than $age - User
+    default: 'heat'
+  HeatCronPurgeDeletedAge:
+    type: string
+    description: >
+        Cron to purge db entries marked as deleted and older than $age - Age
+    default: '30'
+  HeatCronPurgeDeletedAgeType:
+    type: string
+    description: >
+        Cron to purge db entries marked as deleted and older than $age - Age type
+    default: 'days'
+  HeatCronPurgeDeletedDestination:
+    type: string
+    description: >
+        Cron to purge db entries marked as deleted and older than $age - Log destination
+    default: '/dev/null'
+  HeatMaxJsonBodySize:
+    default: 1048576
+    description: Maximum raw byte size of the Heat API JSON request body.
+    type: number
+  NotificationDriver:
+    type: string
+    default: 'messagingv2'
+    description: Driver or drivers to handle sending notifications.
+    constraints:
+      - allowed_values: [ 'messagingv2', 'noop' ]
+
+conditions:
+  service_debug_unset: {equals : [{get_param: HeatDebug}, '']}
+
+outputs:
+  role_data:
+    description: Shared role data for the Heat services.
+    value:
+      service_name: heat_base
+      config_settings:
+        heat::notification_driver: {get_param: NotificationDriver}
+        heat::rabbit_userid: {get_param: RabbitUserName}
+        heat::rabbit_password: {get_param: RabbitPassword}
+        heat::rabbit_use_ssl: {get_param: RabbitClientUseSSL}
+        heat::rabbit_port: {get_param: RabbitClientPort}
+        heat::debug:
+          if:
+          - service_debug_unset
+          - {get_param: Debug }
+          - {get_param: HeatDebug }
+        heat::enable_proxy_headers_parsing: true
+        heat::rpc_response_timeout: 600
+        # We need this because the default heat policy.json no longer works on TripleO
+        # https://git.openstack.org/cgit/openstack/heat/commit/?id=ac86702172ddf01f5bdc3f3cd99d2e32ad9b7024
+        heat::policy::policies:
+          context_is_admin:
+            key: 'context_is_admin'
+            value: 'role:admin'
+        heat::rabbit_heartbeat_timeout_threshold: 60
+        heat::keystone::authtoken::project_name: 'service'
+        heat::keystone::authtoken::user_domain_name: 'Default'
+        heat::keystone::authtoken::project_domain_name: 'Default'
+        heat::keystone::authtoken::auth_uri: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix] }
+        heat::keystone::authtoken::auth_url: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix] }
+        heat::keystone::authtoken::password: {get_param: HeatPassword}
+        heat::keystone::domain::domain_name: 'heat_stack'
+        heat::keystone::domain::domain_admin: 'heat_stack_domain_admin'
+        heat::keystone::domain::domain_admin_email: 'heat_stack_domain_admin@localhost'
+        heat::db::database_db_max_retries: -1
+        heat::db::database_max_retries: -1
+        heat::yaql_memory_quota: 100000
+        heat::yaql_limit_iterators: 1000
+        heat::cron::purge_deleted::ensure: {get_param: HeatCronPurgeDeletedEnsure}
+        heat::cron::purge_deleted::minute: {get_param: HeatCronPurgeDeletedMinute}
+        heat::cron::purge_deleted::hour: {get_param: HeatCronPurgeDeletedHour}
+        heat::cron::purge_deleted::monthday: {get_param: HeatCronPurgeDeletedMonthday}
+        heat::cron::purge_deleted::month: {get_param: HeatCronPurgeDeletedMonth}
+        heat::cron::purge_deleted::weekday: {get_param: HeatCronPurgeDeletedWeekday}
+        heat::cron::purge_deleted::maxdelay: {get_param: HeatCronPurgeDeletedMaxDelay}
+        heat::cron::purge_deleted::user: {get_param: HeatCronPurgeDeletedUser}
+        heat::cron::purge_deleted::age: {get_param: HeatCronPurgeDeletedAge}
+        heat::cron::purge_deleted::age_type: {get_param: HeatCronPurgeDeletedAgeType}
+        heat::cron::purge_deleted::destination: {get_param: HeatCronPurgeDeletedDestination}
+        heat::max_json_body_size: {get_param: HeatMaxJsonBodySize}
+      service_config_settings:
+        keystone:
+          tripleo::profile::base::keystone::heat_admin_domain: 'heat_stack'
+          tripleo::profile::base::keystone::heat_admin_user: 'heat_stack_domain_admin'
+          tripleo::profile::base::keystone::heat_admin_email: 'heat_stack_domain_admin@localhost'

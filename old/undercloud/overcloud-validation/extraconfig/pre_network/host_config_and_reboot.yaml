@@ -1,0 +1,289 @@
+heat_template_version: pike
+
+description: >
+  All configurations which require reboot should be initiated via PreNetworkConfig. After
+  this configuration is completed, the corresponding node will be rebooted.
+
+parameters:
+  server:
+    type: string
+  RoleParameters:
+    type: json
+    description: Parameters specific to the role
+    default: {}
+  ServiceNames:
+    type: comma_delimited_list
+    default: []
+  OvsEnableDpdk:
+    default: false
+    description: Whether or not to configure enable DPDK in OVS
+    type: boolean
+  OvsDpdkCoreList:
+    description: >
+      List of cores to be used for DPDK lcore threads.  Note, these threads
+      are used by the OVS control path for validator and handling functions.
+    type: string
+    constraints:
+      - allowed_pattern: "[0-9,-]*"
+    default: ""
+  OvsDpdkMemoryChannels:
+    description: Number of memory channels per socket to be used for DPDK
+    type: string
+    constraints:
+      - allowed_pattern: "[0-9]*"
+    default: ""
+  OvsDpdkSocketMemory:
+    default: ""
+    description: >
+      Sets the amount of hugepage memory to assign per NUMA node. It is
+      recommended to use the socket closest to the PCIe slot used for the
+      desired DPDK NIC.  The format should be in "<socket 0 mem>, <socket 1
+      mem>, <socket n mem>", where the value is specified in MB.  For example:
+      "1024,0".
+    type: string
+  OvsPmdCoreList:
+    description: >
+      A list or range of CPU cores for PMD threads to be pinned to.  Note, NIC
+      location to cores on socket, number of hyper-threaded logical cores, and
+      desired number of PMD threads can all play a role in configuring this
+      setting.  These cores should be on the same socket where
+      OvsDpdkSocketMemory is assigned.  If using hyperthreading then specify
+      both logical cores that would equal the physical core. Also, specifying
+      more than one core will trigger multiple PMD threads to be spawned which
+      may improve dataplane performance.
+    constraints:
+      - allowed_pattern: "[0-9,-]*"
+    type: string
+    default: ""
+  deployment_actions:
+    default: ['CREATE', 'UPDATE']
+    type: comma_delimited_list
+    description: >
+      List of stack actions that will trigger any deployments in this
+      templates. The actions will be an empty list of the server is in the
+      toplevel DeploymentServerBlacklist parameter's value.
+  EnableDpdkDeploymentActions:
+    default: ['CREATE']
+    type: comma_delimited_list
+    description: >
+      Exposing the DPDK deployment action, it may be required to run DPDK
+      config during an upgrade. By default DPDK will be enabled during the
+      CREATE action only. But on cases when it requires for certain migration,
+      it may be required to run it for UPDATE action too.
+  # DEPRECATED: the following options are deprecated and are currently maintained
+  # for backwards compatibility. They will be removed in the Queens cycle.
+  HostCpusList:
+    description: List of cores to be used for host process
+    type: string
+    constraints:
+      - allowed_pattern: "[0-9,-]+"
+    default: '0'
+  NeutronDpdkCoreList:
+    description: List of cores to be used for DPDK Poll Mode Driver
+    type: string
+    constraints:
+      - allowed_pattern: "[0-9,-]*"
+    default: ''
+  NeutronDpdkMemoryChannels:
+    description: Number of memory channels to be used for DPDK
+    type: string
+    constraints:
+      - allowed_pattern: "[0-9]*"
+    default: ''
+  NeutronDpdkSocketMemory:
+    default: ''
+    description: Memory allocated for each socket
+    type: string
+
+conditions:
+  is_host_config_required: {not: {equals: [{get_param: [RoleParameters, KernelArgs]}, ""]}}
+  is_dpdk_config_required:
+    or:
+      - yaql:
+          expression: $.data.service_names.contains('neutron_ovs_dpdk_agent')
+          data:
+            service_names: {get_param: ServiceNames}
+      - {equals: [{get_param: [RoleParameters, OvsEnableDpdk]}, true]}
+  is_reboot_config_required:
+    or:
+      - is_host_config_required
+      - is_dpdk_config_required
+  l_cores_empty: {equals: [{get_param: OvsDpdkCoreList}, '']}
+  pmd_cores_empty: {equals: [{get_param: OvsPmdCoreList}, '']}
+  mem_channels_empty: {equals: [{get_param: OvsDpdkMemoryChannels}, '']}
+  socket_mem_empty: {equals: [{get_param: OvsDpdkSocketMemory}, '']}
+  deployment_actions_empty:
+    equals:
+      - {get_param: deployment_actions}
+      - []
+
+resources:
+  RoleParametersValue:
+    type: OS::Heat::Value
+    properties:
+      type: json
+      value:
+        map_replace:
+          - map_replace:
+            - OvsDpdkCoreList: OvsDpdkCoreList
+              OvsDpdkMemoryChannels: OvsDpdkMemoryChannels
+              OvsDpdkSocketMemory: OvsDpdkSocketMemory
+              OvsPmdCoreList: OvsPmdCoreList
+            - values: {get_param: [RoleParameters]}
+          - values:
+              OvsDpdkCoreList: {if: [l_cores_empty, {get_param: HostCpusList}, {get_param: OvsDpdkCoreList}]}
+              OvsDpdkMemoryChannels: {if: [mem_channels_empty, {get_param: NeutronDpdkMemoryChannels}, {get_param: OvsDpdkMemoryChannels}]}
+              OvsDpdkSocketMemory: {if: [socket_mem_empty, {get_param: NeutronDpdkSocketMemory}, {get_param: OvsDpdkSocketMemory}]}
+              OvsPmdCoreList: {if: [pmd_cores_empty, {get_param: NeutronDpdkCoreList}, {get_param: OvsPmdCoreList}]}
+
+  HostParametersConfig:
+    type: OS::Heat::SoftwareConfig
+    condition: is_host_config_required
+    properties:
+      group: ansible
+      inputs:
+        - name: _KERNEL_ARGS_
+        - name: _TUNED_PROFILE_NAME_
+        - name: _TUNED_CORES_
+      outputs:
+        - name: result
+      config:
+        get_file: ansible_host_config.yaml
+
+  HostParametersDeployment:
+    type: OS::Heat::SoftwareDeployment
+    condition: is_host_config_required
+    properties:
+      name: HostParametersDeployment
+      server:  {get_param: server}
+      config: {get_resource: HostParametersConfig}
+      actions:
+        if:
+          - deployment_actions_empty
+          - []
+          - ['CREATE'] # Only do this on CREATE
+      input_values:
+        _KERNEL_ARGS_: {get_param: [RoleParameters, KernelArgs]}
+        _TUNED_PROFILE_NAME_: {get_param: [RoleParameters, TunedProfileName]}
+        _TUNED_CORES_: {get_param: [RoleParameters, IsolCpusList]}
+
+  RebootConfig:
+    type: OS::Heat::SoftwareConfig
+    condition: is_reboot_config_required
+    properties:
+      group: script
+      config: |
+        #!/bin/bash
+        # Stop os-collect-config to avoid any race collecting another
+        # deployment before reboot happens
+        systemctl stop os-collect-config.service
+        /sbin/reboot
+
+  RebootDeployment:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: HostParametersDeployment
+    condition: is_reboot_config_required
+    properties:
+      name: RebootDeployment
+      server:  {get_param: server}
+      config: {get_resource: RebootConfig}
+      actions:
+        if:
+          - deployment_actions_empty
+          - []
+          - ['CREATE'] # Only do this on CREATE
+      signal_transport: NO_SIGNAL
+
+  # With OvS2.7 (which is default with pike), ovs-vswitchd will start dpdk
+  # immediately after setting dpdk-init (behaviour change from ovs2.6).
+  # Starting of DPDK require the huge page configuration to be enabled. So
+  # reboot will happen before DPDK config and we don't need an explicity
+  # restart after dpdk-init as true because of the behavior change.
+  # TODO(skramaja): Dependency is that till the service file workaround, is
+  # maintained, restart of ovs is required.
+  EnableDpdkConfig:
+    type: OS::Heat::SoftwareConfig
+    condition: is_dpdk_config_required
+    properties:
+      group: script
+      config:
+        str_replace:
+          template: |
+            #!/bin/bash
+            set -x
+
+            # OvS Permission issue temporary workaround
+            # https://bugzilla.redhat.com/show_bug.cgi?id=1459436
+            # Actual solution from openvswitch - https://mail.openvswitch.org/pipermail/ovs-dev/2017-June/333423.html
+            ovs_service_path="/usr/lib/systemd/system/ovs-vswitchd.service"
+
+            if grep -q 'RuntimeDirectoryMode' $ovs_service_path; then
+                sed -i 's/RuntimeDirectoryMode=.*/RuntimeDirectoryMode=0775/' $ovs_service_path
+            else
+                echo "RuntimeDirectoryMode=0775" >> $ovs_service_path
+            fi
+
+            if ! grep -Fxq "Group=qemu" $ovs_service_path ; then
+              echo "Group=qemu" >> $ovs_service_path
+            fi
+
+            if ! grep -Fxq "UMask=0002" $ovs_service_path ; then
+              echo "UMask=0002" >> $ovs_service_path
+            fi
+
+            ovs_ctl_path='/usr/share/openvswitch/scripts/ovs-ctl'
+            if ! grep -q "umask 0002 \&\& start_daemon \"\$OVS_VSWITCHD_PRIORITY\"" $ovs_ctl_path ; then
+              sed -i 's/start_daemon \"\$OVS_VSWITCHD_PRIORITY\"/umask 0002 \&\& start_daemon \"$OVS_VSWITCHD_PRIORITY\"/' $ovs_ctl_path
+            fi
+
+            systemctl daemon-reload
+            systemctl restart openvswitch
+
+            # DO NOT use --detailed-exitcodes
+            puppet apply --logdest console \
+              --modulepath /etc/puppet/modules:/opt/stack/puppet-modules:/usr/share/openstack-puppet/modules \
+              -e '
+                class {"vswitch::dpdk":
+                  host_core_list  => "$HOST_CORES",
+                  pmd_core_list   => "$PMD_CORES",
+                  memory_channels => "$MEMORY_CHANNELS",
+                  socket_mem      => "$SOCKET_MEMORY",
+                }
+              '
+          params:
+            $HOST_CORES: {get_attr: [RoleParametersValue, value, OvsDpdkCoreList]}
+            $PMD_CORES: {get_attr: [RoleParametersValue, value, OvsPmdCoreList]}
+            $MEMORY_CHANNELS: {get_attr: [RoleParametersValue, value, OvsDpdkMemoryChannels]}
+            $SOCKET_MEMORY: {get_attr: [RoleParametersValue, value, OvsDpdkSocketMemory]}
+
+  EnableDpdkDeployment:
+    type: OS::Heat::SoftwareDeployment
+    condition: is_dpdk_config_required
+    depends_on: RebootDeployment
+    properties:
+      name: EnableDpdkDeployment
+      server:  {get_param: server}
+      config: {get_resource: EnableDpdkConfig}
+      actions:
+        if:
+          - deployment_actions_empty
+          - []
+          - {get_param: EnableDpdkDeploymentActions}
+
+outputs:
+  result:
+    condition: is_host_config_required
+    value:
+      get_attr: [HostParametersDeployment, result]
+  stdout:
+    condition: is_host_config_required
+    value:
+      get_attr: [HostParametersDeployment, deploy_stdout]
+  stderr:
+    condition: is_host_config_required
+    value:
+      get_attr: [HostParametersDeployment, deploy_stderr]
+  status_code:
+    condition: is_host_config_required
+    value:
+      get_attr: [HostParametersDeployment, deploy_status_code]

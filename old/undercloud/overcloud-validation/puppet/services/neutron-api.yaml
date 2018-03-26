@@ -1,0 +1,238 @@
+heat_template_version: pike
+
+description: >
+  OpenStack Neutron Server configured with Puppet
+
+parameters:
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  NeutronWorkers:
+    default: ''
+    description: |
+      Sets the number of API and RPC workers for the Neutron service.
+      The default value results in the configuration being left unset
+      and a system-dependent default will be chosen (usually the number
+      of processors). Please note that this can result in a large number
+      of processes and memory consumption on systems with a large core
+      count. On such systems it is recommended that a non-default value
+      be selected that matches the load requirements.
+    type: string
+  NeutronPassword:
+    description: The password for the neutron service and db account, used by neutron agents.
+    type: string
+    hidden: true
+  NeutronAllowL3AgentFailover:
+    default: 'True'
+    description: Allow automatic l3-agent failover
+    type: string
+  NovaPassword:
+    description: The password for the nova service and db account
+    type: string
+    hidden: true
+  NeutronEnableDVR:
+    description: Enable Neutron DVR.
+    default: false
+    type: boolean
+  KeystoneRegion:
+    type: string
+    default: 'regionOne'
+    description: Keystone region for endpoint
+  MonitoringSubscriptionNeutronServer:
+    default: 'overcloud-neutron-server'
+    type: string
+  NeutronApiLoggingSource:
+    type: json
+    default:
+      tag: openstack.neutron.api
+      path: /var/log/neutron/server.log
+  EnableInternalTLS:
+    type: boolean
+    default: false
+  NeutronApiPolicies:
+    description: |
+      A hash of policies to configure for Neutron API.
+      e.g. { neutron-context_is_admin: { key: context_is_admin, value: 'role:admin' } }
+    default: {}
+    type: json
+
+  # DEPRECATED: the following options are deprecated and are currently maintained
+  # for backwards compatibility. They will be removed in the Ocata cycle.
+  NeutronL3HA:
+    default: ''
+    type: string
+    description: |
+      Whether to enable HA for virtual routers. When not set, L3 HA will be
+      automatically enabled if the number of nodes hosting controller
+      configurations and DVR is disabled. Valid values are 'true' or 'false'
+      This parameter is being deprecated in Newton and is scheduled to be
+      removed in Ocata.  Future releases will enable L3 HA by default if it is
+      appropriate for the deployment type. Alternate mechanisms will be
+      available to override.
+parameter_groups:
+- label: deprecated
+  description: |
+   The following parameters are deprecated and will be removed. They should not
+   be relied on for new deployments. If you have concerns regarding deprecated
+   parameters, please contact the TripleO development team on IRC or the
+   OpenStack mailing list.
+  parameters:
+  - NeutronL3HA
+
+conditions:
+  use_tls_proxy: {equals : [{get_param: EnableInternalTLS}, true]}
+  neutron_workers_unset: {equals : [{get_param: NeutronWorkers}, '']}
+
+resources:
+
+  TLSProxyBase:
+    type: OS::TripleO::Services::TLSProxyBase
+    properties:
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      EndpointMap: {get_param: EndpointMap}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+      EnableInternalTLS: {get_param: EnableInternalTLS}
+
+  NeutronBase:
+    type: ./neutron-base.yaml
+    properties:
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      EndpointMap: {get_param: EndpointMap}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+outputs:
+  role_data:
+    description: Role data for the Neutron Server agent service.
+    value:
+      service_name: neutron_api
+      monitoring_subscription: {get_param: MonitoringSubscriptionNeutronServer}
+      logging_source: {get_param: NeutronApiLoggingSource}
+      logging_groups:
+        - neutron
+      config_settings:
+        map_merge:
+          - get_attr: [NeutronBase, role_data, config_settings]
+          - get_attr: [TLSProxyBase, role_data, config_settings]
+          - neutron::server::database_connection:
+              make_url:
+                scheme: {get_param: [EndpointMap, MysqlInternal, protocol]}
+                username: neutron
+                password: {get_param: NeutronPassword}
+                host: {get_param: [EndpointMap, MysqlInternal, host]}
+                path: /ovs_neutron
+                query:
+                  read_default_file: /etc/my.cnf.d/tripleo.cnf
+                  read_default_group: tripleo
+            neutron::policy::policies: {get_param: NeutronApiPolicies}
+            neutron::keystone::authtoken::auth_uri: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix] }
+            neutron::keystone::authtoken::auth_url: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix]}
+            neutron::server::allow_automatic_l3agent_failover: {get_param: NeutronAllowL3AgentFailover}
+            neutron::server::enable_proxy_headers_parsing: true
+            neutron::keystone::authtoken::password: {get_param: NeutronPassword}
+            neutron::server::notifications::auth_url: { get_param: [ EndpointMap, KeystoneInternal, uri_no_suffix ] }
+            neutron::server::notifications::tenant_name: 'service'
+            neutron::server::notifications::project_name: 'service'
+            neutron::server::notifications::password: {get_param: NovaPassword}
+            neutron::keystone::authtoken::project_name: 'service'
+            neutron::keystone::authtoken::user_domain_name: 'Default'
+            neutron::keystone::authtoken::project_domain_name: 'Default'
+            neutron::server::sync_db: true
+            tripleo.neutron_api.firewall_rules:
+              '114 neutron api':
+                dport:
+                  - 9696
+                  - 13696
+            neutron::server::router_distributed: {get_param: NeutronEnableDVR}
+            neutron::server::enable_dvr: {get_param: NeutronEnableDVR}
+            # NOTE: bind IP is found in Heat replacing the network name with the local node IP
+            # for the given network; replacement examples (eg. for internal_api):
+            # internal_api -> IP
+            # internal_api_uri -> [IP]
+            # internal_api_subnet - > IP/CIDR
+            tripleo::profile::base::neutron::server::tls_proxy_bind_ip:
+              get_param: [ServiceNetMap, NeutronApiNetwork]
+            tripleo::profile::base::neutron::server::tls_proxy_fqdn:
+              str_replace:
+                template:
+                  "%{hiera('fqdn_$NETWORK')}"
+                params:
+                  $NETWORK: {get_param: [ServiceNetMap, NeutronApiNetwork]}
+            tripleo::profile::base::neutron::server::tls_proxy_port:
+              get_param: [EndpointMap, NeutronInternal, port]
+            # Bind to localhost if internal TLS is enabled, since we put a TLS
+            # proxy in front.
+            neutron::bind_host:
+              if:
+              - use_tls_proxy
+              - 'localhost'
+              - {get_param: [ServiceNetMap, NeutronApiNetwork]}
+            tripleo::profile::base::neutron::server::l3_ha_override: {get_param: NeutronL3HA}
+          -
+            if:
+            - neutron_workers_unset
+            - {}
+            - neutron::server::api_workers: {get_param: NeutronWorkers}
+              neutron::server::rpc_workers: {get_param: NeutronWorkers}
+      step_config: |
+        include tripleo::profile::base::neutron::server
+      service_config_settings:
+        keystone:
+          neutron::keystone::auth::tenant: 'service'
+          neutron::keystone::auth::public_url: {get_param: [EndpointMap, NeutronPublic, uri]}
+          neutron::keystone::auth::internal_url: { get_param: [ EndpointMap, NeutronInternal, uri ] }
+          neutron::keystone::auth::admin_url: { get_param: [ EndpointMap, NeutronAdmin, uri ] }
+          neutron::keystone::auth::password: {get_param: NeutronPassword}
+          neutron::keystone::auth::region: {get_param: KeystoneRegion}
+        mysql:
+          neutron::db::mysql::password: {get_param: NeutronPassword}
+          neutron::db::mysql::user: neutron
+          neutron::db::mysql::host: {get_param: [EndpointMap, MysqlInternal, host_nobrackets]}
+          neutron::db::mysql::dbname: ovs_neutron
+          neutron::db::mysql::allowed_hosts:
+            - '%'
+            - "%{hiera('mysql_bind_host')}"
+      upgrade_tasks:
+        - name: Check if neutron_server is deployed
+          command: systemctl is-enabled neutron-server
+          tags: common
+          ignore_errors: True
+          register: neutron_server_enabled
+        - name: "PreUpgrade step0,validation: Check service neutron-server is running"
+          shell: /usr/bin/systemctl show 'neutron-server' --property ActiveState | grep '\bactive\b'
+          when: neutron_server_enabled.rc == 0
+          tags: step0,validation
+        - name: Stop neutron_api service
+          tags: step1
+          when: neutron_server_enabled.rc == 0
+          service: name=neutron-server state=stopped
+      metadata_settings:
+        get_attr: [TLSProxyBase, role_data, metadata_settings]

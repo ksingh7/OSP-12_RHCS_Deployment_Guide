@@ -1,0 +1,1949 @@
+# certain initialization steps (run in a container) will occur
+# on the role marked as primary controller or the first role listed# On upgrade certain roles can be disabled for operator driven upgrades
+  # See major_upgrade_steps.j2.yaml and post-upgrade.j2.yaml# primary role is: Controller
+heat_template_version: pike
+
+description: >
+  Post-deploy configuration steps via puppet for all roles,
+  as defined in ../roles_data.yaml
+
+parameters:
+  servers:
+    type: json
+    description: Mapping of Role name e.g Controller to a list of servers
+  stack_name:
+    type: string
+    description: Name of the topmost stack
+  role_data:
+    type: json
+    description: Mapping of Role name e.g Controller to the per-role data
+  DeployIdentifier:
+    default: ''
+    type: string
+    description: >
+      Setting this to a unique value will re-run any deployment tasks which
+      perform configuration on a Heat stack-update.
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ConfigDebug:
+    default: false
+    description: Whether to run config management (e.g. Puppet) in debug mode.
+    type: boolean
+  DockerPuppetDebug:
+    type: string
+    default: ''
+    description: Set to True to enable debug logging with docker-puppet.py
+  DockerPuppetProcessCount:
+    type: number
+    default: 3
+    description: Number of concurrent processes to use when running docker-puppet to generate config files.
+  ctlplane_service_ips:
+    type: json
+
+conditions:
+
+  WorkflowTasks_Step1_Enabled:
+    or:
+      - not:
+          equals:
+            - get_param: [role_data, Controller, workflow_tasks, step1]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, Compute, workflow_tasks, step1]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, BlockStorage, workflow_tasks, step1]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, ObjectStorage, workflow_tasks, step1]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, CephStorage, workflow_tasks, step1]
+            - ''
+      - False
+
+  WorkflowTasks_Step2_Enabled:
+    or:
+      - not:
+          equals:
+            - get_param: [role_data, Controller, workflow_tasks, step2]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, Compute, workflow_tasks, step2]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, BlockStorage, workflow_tasks, step2]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, ObjectStorage, workflow_tasks, step2]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, CephStorage, workflow_tasks, step2]
+            - ''
+      - False
+
+  WorkflowTasks_Step3_Enabled:
+    or:
+      - not:
+          equals:
+            - get_param: [role_data, Controller, workflow_tasks, step3]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, Compute, workflow_tasks, step3]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, BlockStorage, workflow_tasks, step3]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, ObjectStorage, workflow_tasks, step3]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, CephStorage, workflow_tasks, step3]
+            - ''
+      - False
+
+  WorkflowTasks_Step4_Enabled:
+    or:
+      - not:
+          equals:
+            - get_param: [role_data, Controller, workflow_tasks, step4]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, Compute, workflow_tasks, step4]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, BlockStorage, workflow_tasks, step4]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, ObjectStorage, workflow_tasks, step4]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, CephStorage, workflow_tasks, step4]
+            - ''
+      - False
+
+  WorkflowTasks_Step5_Enabled:
+    or:
+      - not:
+          equals:
+            - get_param: [role_data, Controller, workflow_tasks, step5]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, Compute, workflow_tasks, step5]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, BlockStorage, workflow_tasks, step5]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, ObjectStorage, workflow_tasks, step5]
+            - ''
+      - False
+      - not:
+          equals:
+            - get_param: [role_data, CephStorage, workflow_tasks, step5]
+            - ''
+      - False
+
+
+resources:
+
+  RoleConfig:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: ansible
+      options:
+        modulepath: /usr/share/ansible-modules
+      inputs:
+        - name: step
+        - name: role_name
+        - name: update_identifier
+        - name: bootstrap_server_id
+        - name: enable_debug
+        - name: docker_puppet_debug
+        - name: docker_puppet_process_count
+      config:
+        str_replace:
+          template: |
+            - hosts: localhost
+              connection: local
+              tasks:
+              _TASKS
+          params:
+            _TASKS: {get_file: deploy-steps-tasks.yaml}
+# BEGIN workflow_tasks handling
+  WorkflowTasks_Step1:
+    type: OS::Mistral::Workflow
+    condition: WorkflowTasks_Step1_Enabled
+    depends_on:
+      - ControllerPreConfig
+      - ControllerArtifactsDeploy
+      - ComputePreConfig
+      - ComputeArtifactsDeploy
+      - BlockStoragePreConfig
+      - BlockStorageArtifactsDeploy
+      - ObjectStoragePreConfig
+      - ObjectStorageArtifactsDeploy
+      - CephStoragePreConfig
+      - CephStorageArtifactsDeploy
+    properties:
+      name: {list_join: [".", ["tripleo", {get_param: stack_name}, "workflow_tasks", "step1"]]}
+      type: direct
+      tasks:
+        yaql:
+          expression: $.data.where($ != '').select($.get('step1')).where($ != null).flatten()
+          data:
+            - get_param: [role_data, Controller, workflow_tasks]
+            - get_param: [role_data, Compute, workflow_tasks]
+            - get_param: [role_data, BlockStorage, workflow_tasks]
+            - get_param: [role_data, ObjectStorage, workflow_tasks]
+            - get_param: [role_data, CephStorage, workflow_tasks]
+
+  WorkflowTasks_Step1_Execution:
+    type: OS::Mistral::ExternalResource
+    condition: WorkflowTasks_Step1_Enabled
+    depends_on: WorkflowTasks_Step1
+    properties:
+      actions:
+        CREATE:
+          workflow: { get_resource: WorkflowTasks_Step1 }
+          params:
+            env:
+              service_ips: { get_param: ctlplane_service_ips }
+              role_merged_configs:
+                Controller: {get_param: [role_data, Controller, merged_config_settings]}
+                Compute: {get_param: [role_data, Compute, merged_config_settings]}
+                BlockStorage: {get_param: [role_data, BlockStorage, merged_config_settings]}
+                ObjectStorage: {get_param: [role_data, ObjectStorage, merged_config_settings]}
+                CephStorage: {get_param: [role_data, CephStorage, merged_config_settings]}
+            evaluate_env: false
+        UPDATE:
+          workflow: { get_resource: WorkflowTasks_Step1 }
+          params:
+            env:
+              service_ips: { get_param: ctlplane_service_ips }
+              role_merged_configs:
+                Controller: {get_param: [role_data, Controller, merged_config_settings]}
+                Compute: {get_param: [role_data, Compute, merged_config_settings]}
+                BlockStorage: {get_param: [role_data, BlockStorage, merged_config_settings]}
+                ObjectStorage: {get_param: [role_data, ObjectStorage, merged_config_settings]}
+                CephStorage: {get_param: [role_data, CephStorage, merged_config_settings]}
+            evaluate_env: false
+      always_update: true
+# END workflow_tasks handling
+
+# BEGIN workflow_tasks handling
+  WorkflowTasks_Step2:
+    type: OS::Mistral::Workflow
+    condition: WorkflowTasks_Step2_Enabled
+    depends_on:
+      - ControllerDeployment_Step1
+      - ComputeDeployment_Step1
+      - BlockStorageDeployment_Step1
+      - ObjectStorageDeployment_Step1
+      - CephStorageDeployment_Step1
+    properties:
+      name: {list_join: [".", ["tripleo", {get_param: stack_name}, "workflow_tasks", "step2"]]}
+      type: direct
+      tasks:
+        yaql:
+          expression: $.data.where($ != '').select($.get('step2')).where($ != null).flatten()
+          data:
+            - get_param: [role_data, Controller, workflow_tasks]
+            - get_param: [role_data, Compute, workflow_tasks]
+            - get_param: [role_data, BlockStorage, workflow_tasks]
+            - get_param: [role_data, ObjectStorage, workflow_tasks]
+            - get_param: [role_data, CephStorage, workflow_tasks]
+
+  WorkflowTasks_Step2_Execution:
+    type: OS::Mistral::ExternalResource
+    condition: WorkflowTasks_Step2_Enabled
+    depends_on: WorkflowTasks_Step2
+    properties:
+      actions:
+        CREATE:
+          workflow: { get_resource: WorkflowTasks_Step2 }
+          params:
+            env:
+              service_ips: { get_param: ctlplane_service_ips }
+              role_merged_configs:
+                Controller: {get_param: [role_data, Controller, merged_config_settings]}
+                Compute: {get_param: [role_data, Compute, merged_config_settings]}
+                BlockStorage: {get_param: [role_data, BlockStorage, merged_config_settings]}
+                ObjectStorage: {get_param: [role_data, ObjectStorage, merged_config_settings]}
+                CephStorage: {get_param: [role_data, CephStorage, merged_config_settings]}
+            evaluate_env: false
+        UPDATE:
+          workflow: { get_resource: WorkflowTasks_Step2 }
+          params:
+            env:
+              service_ips: { get_param: ctlplane_service_ips }
+              role_merged_configs:
+                Controller: {get_param: [role_data, Controller, merged_config_settings]}
+                Compute: {get_param: [role_data, Compute, merged_config_settings]}
+                BlockStorage: {get_param: [role_data, BlockStorage, merged_config_settings]}
+                ObjectStorage: {get_param: [role_data, ObjectStorage, merged_config_settings]}
+                CephStorage: {get_param: [role_data, CephStorage, merged_config_settings]}
+            evaluate_env: false
+      always_update: true
+# END workflow_tasks handling
+
+# BEGIN workflow_tasks handling
+  WorkflowTasks_Step3:
+    type: OS::Mistral::Workflow
+    condition: WorkflowTasks_Step3_Enabled
+    depends_on:
+      - ControllerDeployment_Step2
+      - ComputeDeployment_Step2
+      - BlockStorageDeployment_Step2
+      - ObjectStorageDeployment_Step2
+      - CephStorageDeployment_Step2
+    properties:
+      name: {list_join: [".", ["tripleo", {get_param: stack_name}, "workflow_tasks", "step3"]]}
+      type: direct
+      tasks:
+        yaql:
+          expression: $.data.where($ != '').select($.get('step3')).where($ != null).flatten()
+          data:
+            - get_param: [role_data, Controller, workflow_tasks]
+            - get_param: [role_data, Compute, workflow_tasks]
+            - get_param: [role_data, BlockStorage, workflow_tasks]
+            - get_param: [role_data, ObjectStorage, workflow_tasks]
+            - get_param: [role_data, CephStorage, workflow_tasks]
+
+  WorkflowTasks_Step3_Execution:
+    type: OS::Mistral::ExternalResource
+    condition: WorkflowTasks_Step3_Enabled
+    depends_on: WorkflowTasks_Step3
+    properties:
+      actions:
+        CREATE:
+          workflow: { get_resource: WorkflowTasks_Step3 }
+          params:
+            env:
+              service_ips: { get_param: ctlplane_service_ips }
+              role_merged_configs:
+                Controller: {get_param: [role_data, Controller, merged_config_settings]}
+                Compute: {get_param: [role_data, Compute, merged_config_settings]}
+                BlockStorage: {get_param: [role_data, BlockStorage, merged_config_settings]}
+                ObjectStorage: {get_param: [role_data, ObjectStorage, merged_config_settings]}
+                CephStorage: {get_param: [role_data, CephStorage, merged_config_settings]}
+            evaluate_env: false
+        UPDATE:
+          workflow: { get_resource: WorkflowTasks_Step3 }
+          params:
+            env:
+              service_ips: { get_param: ctlplane_service_ips }
+              role_merged_configs:
+                Controller: {get_param: [role_data, Controller, merged_config_settings]}
+                Compute: {get_param: [role_data, Compute, merged_config_settings]}
+                BlockStorage: {get_param: [role_data, BlockStorage, merged_config_settings]}
+                ObjectStorage: {get_param: [role_data, ObjectStorage, merged_config_settings]}
+                CephStorage: {get_param: [role_data, CephStorage, merged_config_settings]}
+            evaluate_env: false
+      always_update: true
+# END workflow_tasks handling
+
+# BEGIN workflow_tasks handling
+  WorkflowTasks_Step4:
+    type: OS::Mistral::Workflow
+    condition: WorkflowTasks_Step4_Enabled
+    depends_on:
+      - ControllerDeployment_Step3
+      - ComputeDeployment_Step3
+      - BlockStorageDeployment_Step3
+      - ObjectStorageDeployment_Step3
+      - CephStorageDeployment_Step3
+    properties:
+      name: {list_join: [".", ["tripleo", {get_param: stack_name}, "workflow_tasks", "step4"]]}
+      type: direct
+      tasks:
+        yaql:
+          expression: $.data.where($ != '').select($.get('step4')).where($ != null).flatten()
+          data:
+            - get_param: [role_data, Controller, workflow_tasks]
+            - get_param: [role_data, Compute, workflow_tasks]
+            - get_param: [role_data, BlockStorage, workflow_tasks]
+            - get_param: [role_data, ObjectStorage, workflow_tasks]
+            - get_param: [role_data, CephStorage, workflow_tasks]
+
+  WorkflowTasks_Step4_Execution:
+    type: OS::Mistral::ExternalResource
+    condition: WorkflowTasks_Step4_Enabled
+    depends_on: WorkflowTasks_Step4
+    properties:
+      actions:
+        CREATE:
+          workflow: { get_resource: WorkflowTasks_Step4 }
+          params:
+            env:
+              service_ips: { get_param: ctlplane_service_ips }
+              role_merged_configs:
+                Controller: {get_param: [role_data, Controller, merged_config_settings]}
+                Compute: {get_param: [role_data, Compute, merged_config_settings]}
+                BlockStorage: {get_param: [role_data, BlockStorage, merged_config_settings]}
+                ObjectStorage: {get_param: [role_data, ObjectStorage, merged_config_settings]}
+                CephStorage: {get_param: [role_data, CephStorage, merged_config_settings]}
+            evaluate_env: false
+        UPDATE:
+          workflow: { get_resource: WorkflowTasks_Step4 }
+          params:
+            env:
+              service_ips: { get_param: ctlplane_service_ips }
+              role_merged_configs:
+                Controller: {get_param: [role_data, Controller, merged_config_settings]}
+                Compute: {get_param: [role_data, Compute, merged_config_settings]}
+                BlockStorage: {get_param: [role_data, BlockStorage, merged_config_settings]}
+                ObjectStorage: {get_param: [role_data, ObjectStorage, merged_config_settings]}
+                CephStorage: {get_param: [role_data, CephStorage, merged_config_settings]}
+            evaluate_env: false
+      always_update: true
+# END workflow_tasks handling
+
+# BEGIN workflow_tasks handling
+  WorkflowTasks_Step5:
+    type: OS::Mistral::Workflow
+    condition: WorkflowTasks_Step5_Enabled
+    depends_on:
+      - ControllerDeployment_Step4
+      - ComputeDeployment_Step4
+      - BlockStorageDeployment_Step4
+      - ObjectStorageDeployment_Step4
+      - CephStorageDeployment_Step4
+    properties:
+      name: {list_join: [".", ["tripleo", {get_param: stack_name}, "workflow_tasks", "step5"]]}
+      type: direct
+      tasks:
+        yaql:
+          expression: $.data.where($ != '').select($.get('step5')).where($ != null).flatten()
+          data:
+            - get_param: [role_data, Controller, workflow_tasks]
+            - get_param: [role_data, Compute, workflow_tasks]
+            - get_param: [role_data, BlockStorage, workflow_tasks]
+            - get_param: [role_data, ObjectStorage, workflow_tasks]
+            - get_param: [role_data, CephStorage, workflow_tasks]
+
+  WorkflowTasks_Step5_Execution:
+    type: OS::Mistral::ExternalResource
+    condition: WorkflowTasks_Step5_Enabled
+    depends_on: WorkflowTasks_Step5
+    properties:
+      actions:
+        CREATE:
+          workflow: { get_resource: WorkflowTasks_Step5 }
+          params:
+            env:
+              service_ips: { get_param: ctlplane_service_ips }
+              role_merged_configs:
+                Controller: {get_param: [role_data, Controller, merged_config_settings]}
+                Compute: {get_param: [role_data, Compute, merged_config_settings]}
+                BlockStorage: {get_param: [role_data, BlockStorage, merged_config_settings]}
+                ObjectStorage: {get_param: [role_data, ObjectStorage, merged_config_settings]}
+                CephStorage: {get_param: [role_data, CephStorage, merged_config_settings]}
+            evaluate_env: false
+        UPDATE:
+          workflow: { get_resource: WorkflowTasks_Step5 }
+          params:
+            env:
+              service_ips: { get_param: ctlplane_service_ips }
+              role_merged_configs:
+                Controller: {get_param: [role_data, Controller, merged_config_settings]}
+                Compute: {get_param: [role_data, Compute, merged_config_settings]}
+                BlockStorage: {get_param: [role_data, BlockStorage, merged_config_settings]}
+                ObjectStorage: {get_param: [role_data, ObjectStorage, merged_config_settings]}
+                CephStorage: {get_param: [role_data, CephStorage, merged_config_settings]}
+            evaluate_env: false
+      always_update: true
+# END workflow_tasks handling
+
+
+# Artifacts config and HostPrepConfig is done on all roles, not only
+# enabled_roles, because on upgrade we need to write the json files
+# for the operator driven upgrade scripts (the ansible steps consume them)
+
+  # Prepare host tasks for Controller
+  ControllerArtifactsConfig:
+    type: ../puppet/deploy-artifacts.yaml
+
+  ControllerArtifactsDeploy:
+    type: OS::Heat::StructuredDeploymentGroup
+    properties:
+      servers:  {get_param: [servers, Controller]}
+      config: {get_resource: ControllerArtifactsConfig}
+
+  ControllerHostPrepConfig:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: ansible
+      options:
+        modulepath: /usr/share/ansible-modules
+      config:
+        str_replace:
+          template: _PLAYBOOK
+          params:
+            _PLAYBOOK:
+              - hosts: localhost
+                connection: local
+                vars:
+                  puppet_config: {get_param: [role_data, Controller, puppet_config]}
+                  docker_puppet_script: {get_file: ../docker/docker-puppet.py}
+                  docker_puppet_tasks: {get_param: [role_data, Controller, docker_puppet_tasks]}
+                  docker_startup_configs: {get_param: [role_data, Controller, docker_config]}
+                  kolla_config: {get_param: [role_data, Controller, kolla_config]}
+                  bootstrap_server_id: {get_param: [servers, Controller, '0']}
+                  puppet_step_config: {get_param: [role_data, Controller, step_config]}
+                  docker_config_scripts: {get_param: [role_data, Controller, docker_config_scripts]}
+                tasks:
+                  # Join host_prep_tasks with the other per-host configuration
+                  list_concat:
+                    - {get_param: [role_data, Controller, host_prep_tasks]}
+                    -
+                      # Write the manifest for baremetal puppet configuration
+                      - name: Create /var/lib/tripleo-config directory
+                        file: path=/var/lib/tripleo-config state=directory
+                      - name: Write the puppet step_config manifest
+                        copy: content="{{puppet_step_config}}" dest=/var/lib/tripleo-config/puppet_step_config.pp force=yes mode=0600
+                      # this creates a JSON config file for our docker-puppet.py script
+                      - name: Create /var/lib/docker-puppet
+                        file: path=/var/lib/docker-puppet state=directory
+                      - name: Write docker-puppet-tasks json files
+                        copy: content="{{puppet_config | to_json}}" dest=/var/lib/docker-puppet/docker-puppet.json force=yes mode=0600
+                      # FIXME: can we move docker-puppet somewhere so it's installed via a package?
+                      - name: Write docker-puppet.py
+                        copy: content="{{docker_puppet_script}}" dest=/var/lib/docker-puppet/docker-puppet.py force=yes mode=0600
+                      - name: Create /var/lib/docker-config-scripts
+                        file: path=/var/lib/docker-config-scripts state=directory
+                      - name: Write docker config scripts
+                        copy: content="{{item.value.content}}" dest="/var/lib/docker-config-scripts/{{item.key}}" force=yes mode="{{item.value.mode|default('0600', true)}}"
+                        with_dict: "{{docker_config_scripts}}"
+                      # Here we are dumping all the docker container startup configuration data
+                      # so that we can have access to how they are started outside of heat
+                      # and docker-cmd.  This lets us create command line tools to test containers.
+                      # FIXME do we need the docker-container-startup-configs.json or is the new per-step
+                      # data consumed by paunch enough?
+                      - name: Write docker-container-startup-configs
+                        copy: content="{{docker_startup_configs | to_json}}" dest=/var/lib/docker-container-startup-configs.json force=yes mode=0600
+                      - name: Write per-step docker-container-startup-configs
+                        copy: content="{{item.value|to_json}}" dest="/var/lib/tripleo-config/docker-container-startup-config-{{item.key}}.json" force=yes mode=0600
+                        with_dict: "{{docker_startup_configs}}"
+                      - name: Create /var/lib/kolla/config_files directory
+                        file: path=/var/lib/kolla/config_files state=directory
+                      - name: Write kolla config json files
+                        copy: content="{{item.value|to_json}}" dest="{{item.key}}" force=yes mode=0600
+                        with_dict: "{{kolla_config}}"
+                      ########################################################
+                      # Bootstrap tasks, only performed on bootstrap_server_id
+                      ########################################################
+                      - name: Clean /var/lib/docker-puppet/docker-puppet-tasks*.json files
+                        file:
+                          path: "{{item}}"
+                          state: absent
+                        with_fileglob:
+                          - /var/lib/docker-puppet/docker-puppet-tasks*.json
+                        when: deploy_server_id == bootstrap_server_id
+                      - name: Write docker-puppet-tasks json files
+                        copy: content="{{item.value|to_json}}" dest=/var/lib/docker-puppet/docker-puppet-tasks{{item.key.replace("step_", "")}}.json force=yes mode=0600
+                        with_dict: "{{docker_puppet_tasks}}"
+                        when: deploy_server_id == bootstrap_server_id
+
+  ControllerHostPrepDeployment:
+    type: OS::Heat::SoftwareDeploymentGroup
+    properties:
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: ControllerHostPrepConfig}
+
+  # Prepare host tasks for Compute
+  ComputeArtifactsConfig:
+    type: ../puppet/deploy-artifacts.yaml
+
+  ComputeArtifactsDeploy:
+    type: OS::Heat::StructuredDeploymentGroup
+    properties:
+      servers:  {get_param: [servers, Compute]}
+      config: {get_resource: ComputeArtifactsConfig}
+
+  ComputeHostPrepConfig:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: ansible
+      options:
+        modulepath: /usr/share/ansible-modules
+      config:
+        str_replace:
+          template: _PLAYBOOK
+          params:
+            _PLAYBOOK:
+              - hosts: localhost
+                connection: local
+                vars:
+                  puppet_config: {get_param: [role_data, Compute, puppet_config]}
+                  docker_puppet_script: {get_file: ../docker/docker-puppet.py}
+                  docker_puppet_tasks: {get_param: [role_data, Compute, docker_puppet_tasks]}
+                  docker_startup_configs: {get_param: [role_data, Compute, docker_config]}
+                  kolla_config: {get_param: [role_data, Compute, kolla_config]}
+                  bootstrap_server_id: {get_param: [servers, Controller, '0']}
+                  puppet_step_config: {get_param: [role_data, Compute, step_config]}
+                  docker_config_scripts: {get_param: [role_data, Compute, docker_config_scripts]}
+                tasks:
+                  # Join host_prep_tasks with the other per-host configuration
+                  list_concat:
+                    - {get_param: [role_data, Compute, host_prep_tasks]}
+                    -
+                      # Write the manifest for baremetal puppet configuration
+                      - name: Create /var/lib/tripleo-config directory
+                        file: path=/var/lib/tripleo-config state=directory
+                      - name: Write the puppet step_config manifest
+                        copy: content="{{puppet_step_config}}" dest=/var/lib/tripleo-config/puppet_step_config.pp force=yes mode=0600
+                      # this creates a JSON config file for our docker-puppet.py script
+                      - name: Create /var/lib/docker-puppet
+                        file: path=/var/lib/docker-puppet state=directory
+                      - name: Write docker-puppet-tasks json files
+                        copy: content="{{puppet_config | to_json}}" dest=/var/lib/docker-puppet/docker-puppet.json force=yes mode=0600
+                      # FIXME: can we move docker-puppet somewhere so it's installed via a package?
+                      - name: Write docker-puppet.py
+                        copy: content="{{docker_puppet_script}}" dest=/var/lib/docker-puppet/docker-puppet.py force=yes mode=0600
+                      - name: Create /var/lib/docker-config-scripts
+                        file: path=/var/lib/docker-config-scripts state=directory
+                      - name: Write docker config scripts
+                        copy: content="{{item.value.content}}" dest="/var/lib/docker-config-scripts/{{item.key}}" force=yes mode="{{item.value.mode|default('0600', true)}}"
+                        with_dict: "{{docker_config_scripts}}"
+                      # Here we are dumping all the docker container startup configuration data
+                      # so that we can have access to how they are started outside of heat
+                      # and docker-cmd.  This lets us create command line tools to test containers.
+                      # FIXME do we need the docker-container-startup-configs.json or is the new per-step
+                      # data consumed by paunch enough?
+                      - name: Write docker-container-startup-configs
+                        copy: content="{{docker_startup_configs | to_json}}" dest=/var/lib/docker-container-startup-configs.json force=yes mode=0600
+                      - name: Write per-step docker-container-startup-configs
+                        copy: content="{{item.value|to_json}}" dest="/var/lib/tripleo-config/docker-container-startup-config-{{item.key}}.json" force=yes mode=0600
+                        with_dict: "{{docker_startup_configs}}"
+                      - name: Create /var/lib/kolla/config_files directory
+                        file: path=/var/lib/kolla/config_files state=directory
+                      - name: Write kolla config json files
+                        copy: content="{{item.value|to_json}}" dest="{{item.key}}" force=yes mode=0600
+                        with_dict: "{{kolla_config}}"
+                      ########################################################
+                      # Bootstrap tasks, only performed on bootstrap_server_id
+                      ########################################################
+                      - name: Clean /var/lib/docker-puppet/docker-puppet-tasks*.json files
+                        file:
+                          path: "{{item}}"
+                          state: absent
+                        with_fileglob:
+                          - /var/lib/docker-puppet/docker-puppet-tasks*.json
+                        when: deploy_server_id == bootstrap_server_id
+                      - name: Write docker-puppet-tasks json files
+                        copy: content="{{item.value|to_json}}" dest=/var/lib/docker-puppet/docker-puppet-tasks{{item.key.replace("step_", "")}}.json force=yes mode=0600
+                        with_dict: "{{docker_puppet_tasks}}"
+                        when: deploy_server_id == bootstrap_server_id
+
+  ComputeHostPrepDeployment:
+    type: OS::Heat::SoftwareDeploymentGroup
+    properties:
+      servers: {get_param: [servers, Compute]}
+      config: {get_resource: ComputeHostPrepConfig}
+
+  # Prepare host tasks for BlockStorage
+  BlockStorageArtifactsConfig:
+    type: ../puppet/deploy-artifacts.yaml
+
+  BlockStorageArtifactsDeploy:
+    type: OS::Heat::StructuredDeploymentGroup
+    properties:
+      servers:  {get_param: [servers, BlockStorage]}
+      config: {get_resource: BlockStorageArtifactsConfig}
+
+  BlockStorageHostPrepConfig:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: ansible
+      options:
+        modulepath: /usr/share/ansible-modules
+      config:
+        str_replace:
+          template: _PLAYBOOK
+          params:
+            _PLAYBOOK:
+              - hosts: localhost
+                connection: local
+                vars:
+                  puppet_config: {get_param: [role_data, BlockStorage, puppet_config]}
+                  docker_puppet_script: {get_file: ../docker/docker-puppet.py}
+                  docker_puppet_tasks: {get_param: [role_data, BlockStorage, docker_puppet_tasks]}
+                  docker_startup_configs: {get_param: [role_data, BlockStorage, docker_config]}
+                  kolla_config: {get_param: [role_data, BlockStorage, kolla_config]}
+                  bootstrap_server_id: {get_param: [servers, Controller, '0']}
+                  puppet_step_config: {get_param: [role_data, BlockStorage, step_config]}
+                  docker_config_scripts: {get_param: [role_data, BlockStorage, docker_config_scripts]}
+                tasks:
+                  # Join host_prep_tasks with the other per-host configuration
+                  list_concat:
+                    - {get_param: [role_data, BlockStorage, host_prep_tasks]}
+                    -
+                      # Write the manifest for baremetal puppet configuration
+                      - name: Create /var/lib/tripleo-config directory
+                        file: path=/var/lib/tripleo-config state=directory
+                      - name: Write the puppet step_config manifest
+                        copy: content="{{puppet_step_config}}" dest=/var/lib/tripleo-config/puppet_step_config.pp force=yes mode=0600
+                      # this creates a JSON config file for our docker-puppet.py script
+                      - name: Create /var/lib/docker-puppet
+                        file: path=/var/lib/docker-puppet state=directory
+                      - name: Write docker-puppet-tasks json files
+                        copy: content="{{puppet_config | to_json}}" dest=/var/lib/docker-puppet/docker-puppet.json force=yes mode=0600
+                      # FIXME: can we move docker-puppet somewhere so it's installed via a package?
+                      - name: Write docker-puppet.py
+                        copy: content="{{docker_puppet_script}}" dest=/var/lib/docker-puppet/docker-puppet.py force=yes mode=0600
+                      - name: Create /var/lib/docker-config-scripts
+                        file: path=/var/lib/docker-config-scripts state=directory
+                      - name: Write docker config scripts
+                        copy: content="{{item.value.content}}" dest="/var/lib/docker-config-scripts/{{item.key}}" force=yes mode="{{item.value.mode|default('0600', true)}}"
+                        with_dict: "{{docker_config_scripts}}"
+                      # Here we are dumping all the docker container startup configuration data
+                      # so that we can have access to how they are started outside of heat
+                      # and docker-cmd.  This lets us create command line tools to test containers.
+                      # FIXME do we need the docker-container-startup-configs.json or is the new per-step
+                      # data consumed by paunch enough?
+                      - name: Write docker-container-startup-configs
+                        copy: content="{{docker_startup_configs | to_json}}" dest=/var/lib/docker-container-startup-configs.json force=yes mode=0600
+                      - name: Write per-step docker-container-startup-configs
+                        copy: content="{{item.value|to_json}}" dest="/var/lib/tripleo-config/docker-container-startup-config-{{item.key}}.json" force=yes mode=0600
+                        with_dict: "{{docker_startup_configs}}"
+                      - name: Create /var/lib/kolla/config_files directory
+                        file: path=/var/lib/kolla/config_files state=directory
+                      - name: Write kolla config json files
+                        copy: content="{{item.value|to_json}}" dest="{{item.key}}" force=yes mode=0600
+                        with_dict: "{{kolla_config}}"
+                      ########################################################
+                      # Bootstrap tasks, only performed on bootstrap_server_id
+                      ########################################################
+                      - name: Clean /var/lib/docker-puppet/docker-puppet-tasks*.json files
+                        file:
+                          path: "{{item}}"
+                          state: absent
+                        with_fileglob:
+                          - /var/lib/docker-puppet/docker-puppet-tasks*.json
+                        when: deploy_server_id == bootstrap_server_id
+                      - name: Write docker-puppet-tasks json files
+                        copy: content="{{item.value|to_json}}" dest=/var/lib/docker-puppet/docker-puppet-tasks{{item.key.replace("step_", "")}}.json force=yes mode=0600
+                        with_dict: "{{docker_puppet_tasks}}"
+                        when: deploy_server_id == bootstrap_server_id
+
+  BlockStorageHostPrepDeployment:
+    type: OS::Heat::SoftwareDeploymentGroup
+    properties:
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: BlockStorageHostPrepConfig}
+
+  # Prepare host tasks for ObjectStorage
+  ObjectStorageArtifactsConfig:
+    type: ../puppet/deploy-artifacts.yaml
+
+  ObjectStorageArtifactsDeploy:
+    type: OS::Heat::StructuredDeploymentGroup
+    properties:
+      servers:  {get_param: [servers, ObjectStorage]}
+      config: {get_resource: ObjectStorageArtifactsConfig}
+
+  ObjectStorageHostPrepConfig:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: ansible
+      options:
+        modulepath: /usr/share/ansible-modules
+      config:
+        str_replace:
+          template: _PLAYBOOK
+          params:
+            _PLAYBOOK:
+              - hosts: localhost
+                connection: local
+                vars:
+                  puppet_config: {get_param: [role_data, ObjectStorage, puppet_config]}
+                  docker_puppet_script: {get_file: ../docker/docker-puppet.py}
+                  docker_puppet_tasks: {get_param: [role_data, ObjectStorage, docker_puppet_tasks]}
+                  docker_startup_configs: {get_param: [role_data, ObjectStorage, docker_config]}
+                  kolla_config: {get_param: [role_data, ObjectStorage, kolla_config]}
+                  bootstrap_server_id: {get_param: [servers, Controller, '0']}
+                  puppet_step_config: {get_param: [role_data, ObjectStorage, step_config]}
+                  docker_config_scripts: {get_param: [role_data, ObjectStorage, docker_config_scripts]}
+                tasks:
+                  # Join host_prep_tasks with the other per-host configuration
+                  list_concat:
+                    - {get_param: [role_data, ObjectStorage, host_prep_tasks]}
+                    -
+                      # Write the manifest for baremetal puppet configuration
+                      - name: Create /var/lib/tripleo-config directory
+                        file: path=/var/lib/tripleo-config state=directory
+                      - name: Write the puppet step_config manifest
+                        copy: content="{{puppet_step_config}}" dest=/var/lib/tripleo-config/puppet_step_config.pp force=yes mode=0600
+                      # this creates a JSON config file for our docker-puppet.py script
+                      - name: Create /var/lib/docker-puppet
+                        file: path=/var/lib/docker-puppet state=directory
+                      - name: Write docker-puppet-tasks json files
+                        copy: content="{{puppet_config | to_json}}" dest=/var/lib/docker-puppet/docker-puppet.json force=yes mode=0600
+                      # FIXME: can we move docker-puppet somewhere so it's installed via a package?
+                      - name: Write docker-puppet.py
+                        copy: content="{{docker_puppet_script}}" dest=/var/lib/docker-puppet/docker-puppet.py force=yes mode=0600
+                      - name: Create /var/lib/docker-config-scripts
+                        file: path=/var/lib/docker-config-scripts state=directory
+                      - name: Write docker config scripts
+                        copy: content="{{item.value.content}}" dest="/var/lib/docker-config-scripts/{{item.key}}" force=yes mode="{{item.value.mode|default('0600', true)}}"
+                        with_dict: "{{docker_config_scripts}}"
+                      # Here we are dumping all the docker container startup configuration data
+                      # so that we can have access to how they are started outside of heat
+                      # and docker-cmd.  This lets us create command line tools to test containers.
+                      # FIXME do we need the docker-container-startup-configs.json or is the new per-step
+                      # data consumed by paunch enough?
+                      - name: Write docker-container-startup-configs
+                        copy: content="{{docker_startup_configs | to_json}}" dest=/var/lib/docker-container-startup-configs.json force=yes mode=0600
+                      - name: Write per-step docker-container-startup-configs
+                        copy: content="{{item.value|to_json}}" dest="/var/lib/tripleo-config/docker-container-startup-config-{{item.key}}.json" force=yes mode=0600
+                        with_dict: "{{docker_startup_configs}}"
+                      - name: Create /var/lib/kolla/config_files directory
+                        file: path=/var/lib/kolla/config_files state=directory
+                      - name: Write kolla config json files
+                        copy: content="{{item.value|to_json}}" dest="{{item.key}}" force=yes mode=0600
+                        with_dict: "{{kolla_config}}"
+                      ########################################################
+                      # Bootstrap tasks, only performed on bootstrap_server_id
+                      ########################################################
+                      - name: Clean /var/lib/docker-puppet/docker-puppet-tasks*.json files
+                        file:
+                          path: "{{item}}"
+                          state: absent
+                        with_fileglob:
+                          - /var/lib/docker-puppet/docker-puppet-tasks*.json
+                        when: deploy_server_id == bootstrap_server_id
+                      - name: Write docker-puppet-tasks json files
+                        copy: content="{{item.value|to_json}}" dest=/var/lib/docker-puppet/docker-puppet-tasks{{item.key.replace("step_", "")}}.json force=yes mode=0600
+                        with_dict: "{{docker_puppet_tasks}}"
+                        when: deploy_server_id == bootstrap_server_id
+
+  ObjectStorageHostPrepDeployment:
+    type: OS::Heat::SoftwareDeploymentGroup
+    properties:
+      servers: {get_param: [servers, ObjectStorage]}
+      config: {get_resource: ObjectStorageHostPrepConfig}
+
+  # Prepare host tasks for CephStorage
+  CephStorageArtifactsConfig:
+    type: ../puppet/deploy-artifacts.yaml
+
+  CephStorageArtifactsDeploy:
+    type: OS::Heat::StructuredDeploymentGroup
+    properties:
+      servers:  {get_param: [servers, CephStorage]}
+      config: {get_resource: CephStorageArtifactsConfig}
+
+  CephStorageHostPrepConfig:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: ansible
+      options:
+        modulepath: /usr/share/ansible-modules
+      config:
+        str_replace:
+          template: _PLAYBOOK
+          params:
+            _PLAYBOOK:
+              - hosts: localhost
+                connection: local
+                vars:
+                  puppet_config: {get_param: [role_data, CephStorage, puppet_config]}
+                  docker_puppet_script: {get_file: ../docker/docker-puppet.py}
+                  docker_puppet_tasks: {get_param: [role_data, CephStorage, docker_puppet_tasks]}
+                  docker_startup_configs: {get_param: [role_data, CephStorage, docker_config]}
+                  kolla_config: {get_param: [role_data, CephStorage, kolla_config]}
+                  bootstrap_server_id: {get_param: [servers, Controller, '0']}
+                  puppet_step_config: {get_param: [role_data, CephStorage, step_config]}
+                  docker_config_scripts: {get_param: [role_data, CephStorage, docker_config_scripts]}
+                tasks:
+                  # Join host_prep_tasks with the other per-host configuration
+                  list_concat:
+                    - {get_param: [role_data, CephStorage, host_prep_tasks]}
+                    -
+                      # Write the manifest for baremetal puppet configuration
+                      - name: Create /var/lib/tripleo-config directory
+                        file: path=/var/lib/tripleo-config state=directory
+                      - name: Write the puppet step_config manifest
+                        copy: content="{{puppet_step_config}}" dest=/var/lib/tripleo-config/puppet_step_config.pp force=yes mode=0600
+                      # this creates a JSON config file for our docker-puppet.py script
+                      - name: Create /var/lib/docker-puppet
+                        file: path=/var/lib/docker-puppet state=directory
+                      - name: Write docker-puppet-tasks json files
+                        copy: content="{{puppet_config | to_json}}" dest=/var/lib/docker-puppet/docker-puppet.json force=yes mode=0600
+                      # FIXME: can we move docker-puppet somewhere so it's installed via a package?
+                      - name: Write docker-puppet.py
+                        copy: content="{{docker_puppet_script}}" dest=/var/lib/docker-puppet/docker-puppet.py force=yes mode=0600
+                      - name: Create /var/lib/docker-config-scripts
+                        file: path=/var/lib/docker-config-scripts state=directory
+                      - name: Write docker config scripts
+                        copy: content="{{item.value.content}}" dest="/var/lib/docker-config-scripts/{{item.key}}" force=yes mode="{{item.value.mode|default('0600', true)}}"
+                        with_dict: "{{docker_config_scripts}}"
+                      # Here we are dumping all the docker container startup configuration data
+                      # so that we can have access to how they are started outside of heat
+                      # and docker-cmd.  This lets us create command line tools to test containers.
+                      # FIXME do we need the docker-container-startup-configs.json or is the new per-step
+                      # data consumed by paunch enough?
+                      - name: Write docker-container-startup-configs
+                        copy: content="{{docker_startup_configs | to_json}}" dest=/var/lib/docker-container-startup-configs.json force=yes mode=0600
+                      - name: Write per-step docker-container-startup-configs
+                        copy: content="{{item.value|to_json}}" dest="/var/lib/tripleo-config/docker-container-startup-config-{{item.key}}.json" force=yes mode=0600
+                        with_dict: "{{docker_startup_configs}}"
+                      - name: Create /var/lib/kolla/config_files directory
+                        file: path=/var/lib/kolla/config_files state=directory
+                      - name: Write kolla config json files
+                        copy: content="{{item.value|to_json}}" dest="{{item.key}}" force=yes mode=0600
+                        with_dict: "{{kolla_config}}"
+                      ########################################################
+                      # Bootstrap tasks, only performed on bootstrap_server_id
+                      ########################################################
+                      - name: Clean /var/lib/docker-puppet/docker-puppet-tasks*.json files
+                        file:
+                          path: "{{item}}"
+                          state: absent
+                        with_fileglob:
+                          - /var/lib/docker-puppet/docker-puppet-tasks*.json
+                        when: deploy_server_id == bootstrap_server_id
+                      - name: Write docker-puppet-tasks json files
+                        copy: content="{{item.value|to_json}}" dest=/var/lib/docker-puppet/docker-puppet-tasks{{item.key.replace("step_", "")}}.json force=yes mode=0600
+                        with_dict: "{{docker_puppet_tasks}}"
+                        when: deploy_server_id == bootstrap_server_id
+
+  CephStorageHostPrepDeployment:
+    type: OS::Heat::SoftwareDeploymentGroup
+    properties:
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: CephStorageHostPrepConfig}
+
+
+  # BEGIN CONFIG STEPS, only on enabled_roles
+  ControllerPreConfig:
+    type: OS::TripleO::Tasks::ControllerPreConfig
+    depends_on: ControllerHostPrepDeployment
+    properties:
+      servers: {get_param: [servers, Controller]}
+      input_values:
+        update_identifier: {get_param: DeployIdentifier}
+
+  # Deployment steps for Controller
+  # A single config is re-applied with an incrementing step number
+  
+  ControllerDeployment_Step1:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step1_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerPreConfig
+      - ControllerArtifactsDeploy
+      - ComputePreConfig
+      - ComputeArtifactsDeploy
+      - BlockStoragePreConfig
+      - BlockStorageArtifactsDeploy
+      - ObjectStoragePreConfig
+      - ObjectStorageArtifactsDeploy
+      - CephStoragePreConfig
+      - CephStorageArtifactsDeploy
+    properties:
+      name: ControllerDeployment_Step1
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 1
+        role_name: Controller
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  ControllerDeployment_Step2:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step2_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step1
+      - ComputeDeployment_Step1
+      - BlockStorageDeployment_Step1
+      - ObjectStorageDeployment_Step1
+      - CephStorageDeployment_Step1
+    properties:
+      name: ControllerDeployment_Step2
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 2
+        role_name: Controller
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  ControllerDeployment_Step3:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step3_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step2
+      - ComputeDeployment_Step2
+      - BlockStorageDeployment_Step2
+      - ObjectStorageDeployment_Step2
+      - CephStorageDeployment_Step2
+    properties:
+      name: ControllerDeployment_Step3
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 3
+        role_name: Controller
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  ControllerDeployment_Step4:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step4_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step3
+      - ComputeDeployment_Step3
+      - BlockStorageDeployment_Step3
+      - ObjectStorageDeployment_Step3
+      - CephStorageDeployment_Step3
+    properties:
+      name: ControllerDeployment_Step4
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 4
+        role_name: Controller
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  ControllerDeployment_Step5:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step5_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step4
+      - ComputeDeployment_Step4
+      - BlockStorageDeployment_Step4
+      - ObjectStorageDeployment_Step4
+      - CephStorageDeployment_Step4
+    properties:
+      name: ControllerDeployment_Step5
+      servers: {get_param: [servers, Controller]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 5
+        role_name: Controller
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  # END CONFIG STEPS
+
+  # Note, this should be the last step to execute configuration changes.
+  # Ensure that all ControllerExtraConfigPost steps are executed
+  # after all the previous deployment steps.
+  ControllerExtraConfigPost:
+    depends_on:
+      - ControllerDeployment_Step5
+      - ComputeDeployment_Step5
+      - BlockStorageDeployment_Step5
+      - ObjectStorageDeployment_Step5
+      - CephStorageDeployment_Step5
+    type: OS::TripleO::NodeExtraConfigPost
+    properties:
+        servers: {get_param: [servers, Controller]}
+
+  # The ControllerPostConfig steps are in charge of
+  # quiescing all services, i.e. in the Controller case,
+  # we should run a full service reload.
+  ControllerPostConfig:
+    type: OS::TripleO::Tasks::ControllerPostConfig
+    depends_on:
+      - ControllerExtraConfigPost
+      - ComputeExtraConfigPost
+      - BlockStorageExtraConfigPost
+      - ObjectStorageExtraConfigPost
+      - CephStorageExtraConfigPost
+    properties:
+      servers:  {get_param: servers}
+      input_values:
+        update_identifier: {get_param: DeployIdentifier}
+
+
+
+  ComputePreConfig:
+    type: OS::TripleO::Tasks::ComputePreConfig
+    depends_on: ComputeHostPrepDeployment
+    properties:
+      servers: {get_param: [servers, Compute]}
+      input_values:
+        update_identifier: {get_param: DeployIdentifier}
+
+  # Deployment steps for Compute
+  # A single config is re-applied with an incrementing step number
+  
+  ComputeDeployment_Step1:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step1_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerPreConfig
+      - ControllerArtifactsDeploy
+      - ComputePreConfig
+      - ComputeArtifactsDeploy
+      - BlockStoragePreConfig
+      - BlockStorageArtifactsDeploy
+      - ObjectStoragePreConfig
+      - ObjectStorageArtifactsDeploy
+      - CephStoragePreConfig
+      - CephStorageArtifactsDeploy
+    properties:
+      name: ComputeDeployment_Step1
+      servers: {get_param: [servers, Compute]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 1
+        role_name: Compute
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  ComputeDeployment_Step2:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step2_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step1
+      - ComputeDeployment_Step1
+      - BlockStorageDeployment_Step1
+      - ObjectStorageDeployment_Step1
+      - CephStorageDeployment_Step1
+    properties:
+      name: ComputeDeployment_Step2
+      servers: {get_param: [servers, Compute]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 2
+        role_name: Compute
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  ComputeDeployment_Step3:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step3_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step2
+      - ComputeDeployment_Step2
+      - BlockStorageDeployment_Step2
+      - ObjectStorageDeployment_Step2
+      - CephStorageDeployment_Step2
+    properties:
+      name: ComputeDeployment_Step3
+      servers: {get_param: [servers, Compute]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 3
+        role_name: Compute
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  ComputeDeployment_Step4:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step4_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step3
+      - ComputeDeployment_Step3
+      - BlockStorageDeployment_Step3
+      - ObjectStorageDeployment_Step3
+      - CephStorageDeployment_Step3
+    properties:
+      name: ComputeDeployment_Step4
+      servers: {get_param: [servers, Compute]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 4
+        role_name: Compute
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  ComputeDeployment_Step5:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step5_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step4
+      - ComputeDeployment_Step4
+      - BlockStorageDeployment_Step4
+      - ObjectStorageDeployment_Step4
+      - CephStorageDeployment_Step4
+    properties:
+      name: ComputeDeployment_Step5
+      servers: {get_param: [servers, Compute]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 5
+        role_name: Compute
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  # END CONFIG STEPS
+
+  # Note, this should be the last step to execute configuration changes.
+  # Ensure that all ComputeExtraConfigPost steps are executed
+  # after all the previous deployment steps.
+  ComputeExtraConfigPost:
+    depends_on:
+      - ControllerDeployment_Step5
+      - ComputeDeployment_Step5
+      - BlockStorageDeployment_Step5
+      - ObjectStorageDeployment_Step5
+      - CephStorageDeployment_Step5
+    type: OS::TripleO::NodeExtraConfigPost
+    properties:
+        servers: {get_param: [servers, Compute]}
+
+  # The ComputePostConfig steps are in charge of
+  # quiescing all services, i.e. in the Controller case,
+  # we should run a full service reload.
+  ComputePostConfig:
+    type: OS::TripleO::Tasks::ComputePostConfig
+    depends_on:
+      - ControllerExtraConfigPost
+      - ComputeExtraConfigPost
+      - BlockStorageExtraConfigPost
+      - ObjectStorageExtraConfigPost
+      - CephStorageExtraConfigPost
+    properties:
+      servers:  {get_param: servers}
+      input_values:
+        update_identifier: {get_param: DeployIdentifier}
+
+
+
+  BlockStoragePreConfig:
+    type: OS::TripleO::Tasks::BlockStoragePreConfig
+    depends_on: BlockStorageHostPrepDeployment
+    properties:
+      servers: {get_param: [servers, BlockStorage]}
+      input_values:
+        update_identifier: {get_param: DeployIdentifier}
+
+  # Deployment steps for BlockStorage
+  # A single config is re-applied with an incrementing step number
+  
+  BlockStorageDeployment_Step1:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step1_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerPreConfig
+      - ControllerArtifactsDeploy
+      - ComputePreConfig
+      - ComputeArtifactsDeploy
+      - BlockStoragePreConfig
+      - BlockStorageArtifactsDeploy
+      - ObjectStoragePreConfig
+      - ObjectStorageArtifactsDeploy
+      - CephStoragePreConfig
+      - CephStorageArtifactsDeploy
+    properties:
+      name: BlockStorageDeployment_Step1
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 1
+        role_name: BlockStorage
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  BlockStorageDeployment_Step2:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step2_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step1
+      - ComputeDeployment_Step1
+      - BlockStorageDeployment_Step1
+      - ObjectStorageDeployment_Step1
+      - CephStorageDeployment_Step1
+    properties:
+      name: BlockStorageDeployment_Step2
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 2
+        role_name: BlockStorage
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  BlockStorageDeployment_Step3:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step3_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step2
+      - ComputeDeployment_Step2
+      - BlockStorageDeployment_Step2
+      - ObjectStorageDeployment_Step2
+      - CephStorageDeployment_Step2
+    properties:
+      name: BlockStorageDeployment_Step3
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 3
+        role_name: BlockStorage
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  BlockStorageDeployment_Step4:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step4_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step3
+      - ComputeDeployment_Step3
+      - BlockStorageDeployment_Step3
+      - ObjectStorageDeployment_Step3
+      - CephStorageDeployment_Step3
+    properties:
+      name: BlockStorageDeployment_Step4
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 4
+        role_name: BlockStorage
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  BlockStorageDeployment_Step5:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step5_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step4
+      - ComputeDeployment_Step4
+      - BlockStorageDeployment_Step4
+      - ObjectStorageDeployment_Step4
+      - CephStorageDeployment_Step4
+    properties:
+      name: BlockStorageDeployment_Step5
+      servers: {get_param: [servers, BlockStorage]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 5
+        role_name: BlockStorage
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  # END CONFIG STEPS
+
+  # Note, this should be the last step to execute configuration changes.
+  # Ensure that all BlockStorageExtraConfigPost steps are executed
+  # after all the previous deployment steps.
+  BlockStorageExtraConfigPost:
+    depends_on:
+      - ControllerDeployment_Step5
+      - ComputeDeployment_Step5
+      - BlockStorageDeployment_Step5
+      - ObjectStorageDeployment_Step5
+      - CephStorageDeployment_Step5
+    type: OS::TripleO::NodeExtraConfigPost
+    properties:
+        servers: {get_param: [servers, BlockStorage]}
+
+  # The BlockStoragePostConfig steps are in charge of
+  # quiescing all services, i.e. in the Controller case,
+  # we should run a full service reload.
+  BlockStoragePostConfig:
+    type: OS::TripleO::Tasks::BlockStoragePostConfig
+    depends_on:
+      - ControllerExtraConfigPost
+      - ComputeExtraConfigPost
+      - BlockStorageExtraConfigPost
+      - ObjectStorageExtraConfigPost
+      - CephStorageExtraConfigPost
+    properties:
+      servers:  {get_param: servers}
+      input_values:
+        update_identifier: {get_param: DeployIdentifier}
+
+
+
+  ObjectStoragePreConfig:
+    type: OS::TripleO::Tasks::ObjectStoragePreConfig
+    depends_on: ObjectStorageHostPrepDeployment
+    properties:
+      servers: {get_param: [servers, ObjectStorage]}
+      input_values:
+        update_identifier: {get_param: DeployIdentifier}
+
+  # Deployment steps for ObjectStorage
+  # A single config is re-applied with an incrementing step number
+  
+  ObjectStorageDeployment_Step1:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step1_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerPreConfig
+      - ControllerArtifactsDeploy
+      - ComputePreConfig
+      - ComputeArtifactsDeploy
+      - BlockStoragePreConfig
+      - BlockStorageArtifactsDeploy
+      - ObjectStoragePreConfig
+      - ObjectStorageArtifactsDeploy
+      - CephStoragePreConfig
+      - CephStorageArtifactsDeploy
+    properties:
+      name: ObjectStorageDeployment_Step1
+      servers: {get_param: [servers, ObjectStorage]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 1
+        role_name: ObjectStorage
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  ObjectStorageDeployment_Step2:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step2_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step1
+      - ComputeDeployment_Step1
+      - BlockStorageDeployment_Step1
+      - ObjectStorageDeployment_Step1
+      - CephStorageDeployment_Step1
+    properties:
+      name: ObjectStorageDeployment_Step2
+      servers: {get_param: [servers, ObjectStorage]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 2
+        role_name: ObjectStorage
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  ObjectStorageDeployment_Step3:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step3_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step2
+      - ComputeDeployment_Step2
+      - BlockStorageDeployment_Step2
+      - ObjectStorageDeployment_Step2
+      - CephStorageDeployment_Step2
+    properties:
+      name: ObjectStorageDeployment_Step3
+      servers: {get_param: [servers, ObjectStorage]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 3
+        role_name: ObjectStorage
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  ObjectStorageDeployment_Step4:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step4_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step3
+      - ComputeDeployment_Step3
+      - BlockStorageDeployment_Step3
+      - ObjectStorageDeployment_Step3
+      - CephStorageDeployment_Step3
+    properties:
+      name: ObjectStorageDeployment_Step4
+      servers: {get_param: [servers, ObjectStorage]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 4
+        role_name: ObjectStorage
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  ObjectStorageDeployment_Step5:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step5_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step4
+      - ComputeDeployment_Step4
+      - BlockStorageDeployment_Step4
+      - ObjectStorageDeployment_Step4
+      - CephStorageDeployment_Step4
+    properties:
+      name: ObjectStorageDeployment_Step5
+      servers: {get_param: [servers, ObjectStorage]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 5
+        role_name: ObjectStorage
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  # END CONFIG STEPS
+
+  # Note, this should be the last step to execute configuration changes.
+  # Ensure that all ObjectStorageExtraConfigPost steps are executed
+  # after all the previous deployment steps.
+  ObjectStorageExtraConfigPost:
+    depends_on:
+      - ControllerDeployment_Step5
+      - ComputeDeployment_Step5
+      - BlockStorageDeployment_Step5
+      - ObjectStorageDeployment_Step5
+      - CephStorageDeployment_Step5
+    type: OS::TripleO::NodeExtraConfigPost
+    properties:
+        servers: {get_param: [servers, ObjectStorage]}
+
+  # The ObjectStoragePostConfig steps are in charge of
+  # quiescing all services, i.e. in the Controller case,
+  # we should run a full service reload.
+  ObjectStoragePostConfig:
+    type: OS::TripleO::Tasks::ObjectStoragePostConfig
+    depends_on:
+      - ControllerExtraConfigPost
+      - ComputeExtraConfigPost
+      - BlockStorageExtraConfigPost
+      - ObjectStorageExtraConfigPost
+      - CephStorageExtraConfigPost
+    properties:
+      servers:  {get_param: servers}
+      input_values:
+        update_identifier: {get_param: DeployIdentifier}
+
+
+
+  CephStoragePreConfig:
+    type: OS::TripleO::Tasks::CephStoragePreConfig
+    depends_on: CephStorageHostPrepDeployment
+    properties:
+      servers: {get_param: [servers, CephStorage]}
+      input_values:
+        update_identifier: {get_param: DeployIdentifier}
+
+  # Deployment steps for CephStorage
+  # A single config is re-applied with an incrementing step number
+  
+  CephStorageDeployment_Step1:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step1_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerPreConfig
+      - ControllerArtifactsDeploy
+      - ComputePreConfig
+      - ComputeArtifactsDeploy
+      - BlockStoragePreConfig
+      - BlockStorageArtifactsDeploy
+      - ObjectStoragePreConfig
+      - ObjectStorageArtifactsDeploy
+      - CephStoragePreConfig
+      - CephStorageArtifactsDeploy
+    properties:
+      name: CephStorageDeployment_Step1
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 1
+        role_name: CephStorage
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  CephStorageDeployment_Step2:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step2_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step1
+      - ComputeDeployment_Step1
+      - BlockStorageDeployment_Step1
+      - ObjectStorageDeployment_Step1
+      - CephStorageDeployment_Step1
+    properties:
+      name: CephStorageDeployment_Step2
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 2
+        role_name: CephStorage
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  CephStorageDeployment_Step3:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step3_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step2
+      - ComputeDeployment_Step2
+      - BlockStorageDeployment_Step2
+      - ObjectStorageDeployment_Step2
+      - CephStorageDeployment_Step2
+    properties:
+      name: CephStorageDeployment_Step3
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 3
+        role_name: CephStorage
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  CephStorageDeployment_Step4:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step4_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step3
+      - ComputeDeployment_Step3
+      - BlockStorageDeployment_Step3
+      - ObjectStorageDeployment_Step3
+      - CephStorageDeployment_Step3
+    properties:
+      name: CephStorageDeployment_Step4
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 4
+        role_name: CephStorage
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  CephStorageDeployment_Step5:
+    type: OS::TripleO::DeploymentSteps
+    depends_on:
+      - WorkflowTasks_Step5_Execution
+    # TODO(gfidente): the following if/else condition
+    # replicates what is already defined for the
+    # WorkflowTasks_StepX resource and can be remove
+    # if https://bugs.launchpad.net/heat/+bug/1700569
+    # is fixed.
+      - ControllerDeployment_Step4
+      - ComputeDeployment_Step4
+      - BlockStorageDeployment_Step4
+      - ObjectStorageDeployment_Step4
+      - CephStorageDeployment_Step4
+    properties:
+      name: CephStorageDeployment_Step5
+      servers: {get_param: [servers, CephStorage]}
+      config: {get_resource: RoleConfig}
+      input_values:
+        step: 5
+        role_name: CephStorage
+        update_identifier: {get_param: DeployIdentifier}
+        bootstrap_server_id: {get_param: [servers, Controller, '0']}
+        enable_debug: {get_param: ConfigDebug}
+        docker_puppet_debug: {get_param: DockerPuppetDebug}
+        docker_puppet_process_count: {get_param: DockerPuppetProcessCount}
+  
+  # END CONFIG STEPS
+
+  # Note, this should be the last step to execute configuration changes.
+  # Ensure that all CephStorageExtraConfigPost steps are executed
+  # after all the previous deployment steps.
+  CephStorageExtraConfigPost:
+    depends_on:
+      - ControllerDeployment_Step5
+      - ComputeDeployment_Step5
+      - BlockStorageDeployment_Step5
+      - ObjectStorageDeployment_Step5
+      - CephStorageDeployment_Step5
+    type: OS::TripleO::NodeExtraConfigPost
+    properties:
+        servers: {get_param: [servers, CephStorage]}
+
+  # The CephStoragePostConfig steps are in charge of
+  # quiescing all services, i.e. in the Controller case,
+  # we should run a full service reload.
+  CephStoragePostConfig:
+    type: OS::TripleO::Tasks::CephStoragePostConfig
+    depends_on:
+      - ControllerExtraConfigPost
+      - ComputeExtraConfigPost
+      - BlockStorageExtraConfigPost
+      - ObjectStorageExtraConfigPost
+      - CephStorageExtraConfigPost
+    properties:
+      servers:  {get_param: servers}
+      input_values:
+        update_identifier: {get_param: DeployIdentifier}
+
+
+
+
+outputs:
+  RoleConfig:
+    description: Mapping of config data for all roles
+    value:
+      deploy_steps_tasks: {get_file: deploy-steps-tasks.yaml}
+      deploy_steps_playbook: |
+        - hosts: overcloud
+          tasks:
+            - include: Controller/host_prep_tasks.yaml
+              when: role_name == 'Controller'
+            - include: Compute/host_prep_tasks.yaml
+              when: role_name == 'Compute'
+            - include: BlockStorage/host_prep_tasks.yaml
+              when: role_name == 'BlockStorage'
+            - include: ObjectStorage/host_prep_tasks.yaml
+              when: role_name == 'ObjectStorage'
+            - include: CephStorage/host_prep_tasks.yaml
+              when: role_name == 'CephStorage'
+            - include: deploy_steps_tasks.yaml
+              with_sequence: start=0 end=5
+              loop_control:
+                loop_var: step
+      update_steps_tasks: |
+            - include: Controller/update_tasks.yaml
+              when: role_name == 'Controller'
+            - include: Compute/update_tasks.yaml
+              when: role_name == 'Compute'
+            - include: BlockStorage/update_tasks.yaml
+              when: role_name == 'BlockStorage'
+            - include: ObjectStorage/update_tasks.yaml
+              when: role_name == 'ObjectStorage'
+            - include: CephStorage/update_tasks.yaml
+              when: role_name == 'CephStorage'
+      update_steps_playbook: |
+        - hosts: overcloud
+          serial: 1
+          tasks:
+            - include: update_steps_tasks.yaml
+              with_sequence: start=0 end=5
+              loop_control:
+                loop_var: step
+            - include: deploy_steps_tasks.yaml
+              with_sequence: start=0 end=5
+              loop_control:
+                loop_var: step
+      upgrade_steps_tasks: |
+            - include: Controller/upgrade_tasks.yaml
+              when: role_name == 'Controller'
+            - include: Compute/upgrade_tasks.yaml
+              when: role_name == 'Compute'
+            - include: BlockStorage/upgrade_tasks.yaml
+              when: role_name == 'BlockStorage'
+            - include: ObjectStorage/upgrade_tasks.yaml
+              when: role_name == 'ObjectStorage'
+            - include: CephStorage/upgrade_tasks.yaml
+              when: role_name == 'CephStorage'
+      upgrade_steps_playbook: |
+        - hosts: overcloud
+          tasks:
+            - include: upgrade_steps_tasks.yaml
+              with_sequence: start=0 end=5
+              loop_control:
+                loop_var: step

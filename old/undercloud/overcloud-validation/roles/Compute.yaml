@@ -1,0 +1,59 @@
+###############################################################################
+# Role: Compute                                                               #
+###############################################################################
+- name: Compute
+  description: |
+    Basic Compute Node role
+  CountDefault: 1
+  networks:
+    - InternalApi
+    - Tenant
+    - Storage
+  HostnameFormatDefault: '%stackname%-novacompute-%index%'
+  # Deprecated & backward-compatible values (FIXME: Make parameters consistent)
+  # Set uses_deprecated_params to True if any deprecated params are used.
+  uses_deprecated_params: True
+  deprecated_param_image: 'NovaImage'
+  deprecated_param_extraconfig: 'NovaComputeExtraConfig'
+  deprecated_param_metadata: 'NovaComputeServerMetadata'
+  deprecated_param_scheduler_hints: 'NovaComputeSchedulerHints'
+  deprecated_param_ips: 'NovaComputeIPs'
+  deprecated_server_resource_name: 'NovaCompute'
+  disable_upgrade_deployment: True
+  ServicesDefault:
+    - OS::TripleO::Services::AuditD
+    - OS::TripleO::Services::CACerts
+    - OS::TripleO::Services::CephClient
+    - OS::TripleO::Services::CephExternal
+    - OS::TripleO::Services::CertmongerUser
+    - OS::TripleO::Services::Collectd
+    - OS::TripleO::Services::ComputeCeilometerAgent
+    - OS::TripleO::Services::ComputeNeutronCorePlugin
+    - OS::TripleO::Services::ComputeNeutronL3Agent
+    - OS::TripleO::Services::ComputeNeutronMetadataAgent
+    - OS::TripleO::Services::ComputeNeutronOvsAgent
+    - OS::TripleO::Services::Docker
+    - OS::TripleO::Services::FluentdClient
+    - OS::TripleO::Services::Iscsid
+    - OS::TripleO::Services::Kernel
+    - OS::TripleO::Services::MySQLClient
+    - OS::TripleO::Services::NeutronLinuxbridgeAgent
+    - OS::TripleO::Services::NeutronSriovAgent
+    - OS::TripleO::Services::NeutronSriovHostConfig
+    - OS::TripleO::Services::NeutronVppAgent
+    - OS::TripleO::Services::NovaCompute
+    - OS::TripleO::Services::NovaLibvirt
+    - OS::TripleO::Services::NovaMigrationTarget
+    - OS::TripleO::Services::Ntp
+    - OS::TripleO::Services::ContainersLogrotateCrond
+    - OS::TripleO::Services::OpenDaylightOvs
+    - OS::TripleO::Services::Securetty
+    - OS::TripleO::Services::SensuClient
+    - OS::TripleO::Services::Snmp
+    - OS::TripleO::Services::Sshd
+    - OS::TripleO::Services::Timezone
+    - OS::TripleO::Services::TripleoFirewall
+    - OS::TripleO::Services::TripleoPackages
+    - OS::TripleO::Services::Tuned
+    - OS::TripleO::Services::Vpp
+    - OS::TripleO::Services::OVNController

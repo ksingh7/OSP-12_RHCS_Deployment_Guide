@@ -1,0 +1,219 @@
+heat_template_version: pike
+
+description: >
+  OpenStack containerized Keystone service
+
+parameters:
+  DockerKeystoneImage:
+    description: image
+    type: string
+  DockerKeystoneConfigImage:
+    description: The container image to use for the keystone config_volume
+    type: string
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  AdminPassword:
+    description: The password for the keystone admin account, used for monitoring, querying neutron etc.
+    type: string
+    hidden: true
+  KeystoneTokenProvider:
+    description: The keystone token format
+    type: string
+    default: 'fernet'
+    constraints:
+      - allowed_values: ['uuid', 'fernet']
+  EnableInternalTLS:
+    type: boolean
+    default: false
+
+resources:
+
+  ContainersCommon:
+    type: ./containers-common.yaml
+
+  MySQLClient:
+    type: ../../puppet/services/database/mysql-client.yaml
+
+  KeystoneBase:
+    type: ../../puppet/services/keystone.yaml
+    properties:
+      EndpointMap: {get_param: EndpointMap}
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+conditions:
+
+  internal_tls_enabled: {equals: [{get_param: EnableInternalTLS}, true]}
+
+outputs:
+  role_data:
+    description: Role data for the Keystone API role.
+    value:
+      service_name: {get_attr: [KeystoneBase, role_data, service_name]}
+      config_settings:
+        map_merge:
+          - get_attr: [KeystoneBase, role_data, config_settings]
+          - apache::default_vhost: false
+      logging_source: {get_attr: [KeystoneBase, role_data, logging_source]}
+      logging_groups: {get_attr: [KeystoneBase, role_data, logging_groups]}
+      step_config: &step_config
+        list_join:
+          - "\n"
+          - - "['Keystone_user', 'Keystone_endpoint', 'Keystone_domain', 'Keystone_tenant', 'Keystone_user_role', 'Keystone_role', 'Keystone_service'].each |String $val| { noop_resource($val) }"
+            - {get_attr: [KeystoneBase, role_data, step_config]}
+            - {get_attr: [MySQLClient, role_data, step_config]}
+      service_config_settings: {get_attr: [KeystoneBase, role_data, service_config_settings]}
+      # BEGIN DOCKER SETTINGS
+      puppet_config:
+        config_volume: keystone
+        puppet_tags: keystone_config,keystone_domain_config
+        step_config: *step_config
+        config_image: &keystone_config_image {get_param: DockerKeystoneConfigImage}
+      kolla_config:
+        /var/lib/kolla/config_files/keystone.json:
+          command: /usr/sbin/httpd -DFOREGROUND
+          config_files:
+            - source: "/var/lib/kolla/config_files/src/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+        /var/lib/kolla/config_files/keystone_cron.json:
+          # FIXME(dprince): this is unused ATM because Kolla hardcodes the
+          # args for the keystone container to -DFOREGROUND
+          command: /usr/sbin/crond -n
+          config_files:
+            - source: "/var/lib/kolla/config_files/src/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+          permissions:
+            - path: /var/log/keystone
+              owner: keystone:keystone
+              recurse: true
+      docker_config:
+        # Kolla_bootstrap/db sync runs before permissions set by kolla_config
+        step_2:
+          keystone_init_log:
+            image: &keystone_image {get_param: DockerKeystoneImage}
+            user: root
+            command: ['/bin/bash', '-c', 'chown -R keystone:keystone /var/log/keystone']
+            volumes:
+              - /var/log/containers/keystone:/var/log/keystone
+              - /var/log/containers/httpd/keystone:/var/log/httpd
+        step_3:
+          keystone_db_sync:
+            image: *keystone_image
+            net: host
+            user: root
+            privileged: false
+            detach: false
+            volumes: &keystone_volumes
+              list_concat:
+                - {get_attr: [ContainersCommon, volumes]}
+                -
+                  - /var/lib/kolla/config_files/keystone.json:/var/lib/kolla/config_files/config.json:ro
+                  - /var/lib/config-data/puppet-generated/keystone/:/var/lib/kolla/config_files/src:ro
+                  - /var/log/containers/keystone:/var/log/keystone
+                  - /var/log/containers/httpd/keystone:/var/log/httpd
+                  -
+                    if:
+                      - internal_tls_enabled
+                      - /etc/pki/tls/certs/httpd:/etc/pki/tls/certs/httpd:ro
+                      - ''
+                  -
+                    if:
+                      - internal_tls_enabled
+                      - /etc/pki/tls/private/httpd:/etc/pki/tls/private/httpd:ro
+                      - ''
+            environment:
+              - KOLLA_BOOTSTRAP=True
+              - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+            command: ['/usr/bin/bootstrap_host_exec', 'keystone', '/usr/local/bin/kolla_start']
+          keystone:
+            start_order: 2
+            image: *keystone_image
+            net: host
+            privileged: false
+            restart: always
+            volumes: *keystone_volumes
+            environment:
+              - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+          keystone_bootstrap:
+            start_order: 3
+            action: exec
+            user: root
+            command:
+              [ 'keystone', '/usr/bin/bootstrap_host_exec', 'keystone' ,'keystone-manage', 'bootstrap', '--bootstrap-password', {get_param: AdminPassword} ]
+          keystone_cron:
+            start_order: 4
+            image: *keystone_image
+            user: root
+            net: host
+            privileged: false
+            restart: always
+            command: ['/bin/bash', '-c', '/usr/local/bin/kolla_set_configs && /usr/sbin/crond -n']
+            healthcheck:
+              test: /bin/true
+            volumes:
+              list_concat:
+                - {get_attr: [ContainersCommon, volumes]}
+                -
+                  - /var/lib/kolla/config_files/keystone_cron.json:/var/lib/kolla/config_files/config.json:ro
+                  - /var/lib/config-data/puppet-generated/keystone/:/var/lib/kolla/config_files/src:ro
+                  - /var/log/containers/keystone:/var/log/keystone
+                  - /var/log/containers/httpd/keystone:/var/log/httpd
+            environment:
+              - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+      docker_puppet_tasks:
+        # Keystone endpoint creation occurs only on single node
+        step_3:
+          config_volume: 'keystone_init_tasks'
+          puppet_tags: 'keystone_config,keystone_domain_config,keystone_endpoint,keystone_identity_provider,keystone_paste_ini,keystone_role,keystone_service,keystone_tenant,keystone_user,keystone_user_role,keystone_domain'
+          step_config: 'include ::tripleo::profile::base::keystone'
+          config_image: *keystone_config_image
+      host_prep_tasks:
+        - name: create persistent logs directory
+          file:
+            path: "{{ item }}"
+            state: directory
+          with_items:
+            - /var/log/containers/keystone
+            - /var/log/containers/httpd/keystone
+      upgrade_tasks:
+        - name: Stop and disable keystone service (running under httpd)
+          tags: step2
+          service: name=httpd state=stopped enabled=no
+        - name: remove old keystone cron jobs
+          tags: step2
+          file:
+            path: /var/spool/cron/keystone
+            state: absent
+      metadata_settings:
+        get_attr: [KeystoneBase, role_data, metadata_settings]

@@ -1,0 +1,14 @@
+resource_registry:
+  OS::TripleO::PostDeploySteps: ../common/major_upgrade_steps.yaml
+parameter_defaults:
+  EnableConfigPurge: false
+  StackUpdateType: UPGRADE
+  UpgradeLevelNovaCompute: auto
+  UpgradeInitCommonCommand: |
+    #!/bin/bash
+    set -eu
+    # Ocata to Pike, put any needed host-level workarounds here
+    yum update -y ansible
+    yum install -y ansible-pacemaker
+  MigrationSshPort: 22
+  UpgradeRemoveUnusedPackages: false

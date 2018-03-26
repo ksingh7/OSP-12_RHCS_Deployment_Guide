@@ -1,0 +1,158 @@
+heat_template_version: pike
+
+description: >
+  OpenStack Congress service configured with Puppet
+
+parameters:
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  CongressPassword:
+    description: The password for the congress service account.
+    type: string
+    hidden: true
+  Debug:
+    type: string
+    default: ''
+    description: Set to True to enable debugging on all services.
+  CongressDebug:
+    default: ''
+    description: Set to True to enable debugging Glance service.
+    type: string
+  KeystoneRegion:
+    type: string
+    default: 'regionOne'
+    description: Keystone region for endpoint
+  RabbitPassword:
+    description: The password for RabbitMQ
+    type: string
+    hidden: true
+  RabbitUserName:
+    default: guest
+    description: The username for RabbitMQ
+    type: string
+  RabbitClientUseSSL:
+    default: false
+    description: >
+        Rabbit client subscriber parameter to specify
+        an SSL connection to the RabbitMQ host.
+    type: string
+  RabbitClientPort:
+    default: 5672
+    description: Set rabbit subscriber port, change this if using SSL
+    type: number
+  CongressPolicies:
+    description: |
+      A hash of policies to configure for Congress.
+      e.g. { congress-context_is_admin: { key: context_is_admin, value: 'role:admin' } }
+    default: {}
+    type: json
+  NotificationDriver:
+    type: string
+    default: 'messagingv2'
+    description: Driver or drivers to handle sending notifications.
+    constraints:
+      - allowed_values: [ 'messagingv2', 'noop' ]
+
+conditions:
+  service_debug_unset: {equals : [{get_param: CongressDebug}, '']}
+
+outputs:
+  role_data:
+    description: Role data for the Congress role.
+    value:
+      service_name: congress
+      config_settings:
+        congress_password: {get_param: CongressPassword}
+        congress::db::database_connection:
+          make_url:
+            scheme: {get_param: [EndpointMap, MysqlInternal, protocol]}
+            username: congress
+            password: {get_param: CongressPassword}
+            host: {get_param: [EndpointMap, MysqlInternal, host]}
+            path: /congress
+            query:
+              read_default_file: /etc/my.cnf.d/tripleo.cnf
+              read_default_group: tripleo
+        congress::debug:
+          if:
+          - service_debug_unset
+          - {get_param: Debug }
+          - {get_param: CongressDebug }
+        congress::rpc_backend: rabbit
+        congress::notification_driver: {get_param: NotificationDriver}
+        congress::rabbit_userid: {get_param: RabbitUserName}
+        congress::rabbit_password: {get_param: RabbitPassword}
+        congress::rabbit_use_ssl: {get_param: RabbitClientUseSSL}
+        congress::rabbit_port: {get_param: RabbitClientPort}
+        congress::server::bind_host: {get_param: [ServiceNetMap, CongressApiNetwork]}
+
+        congress::keystone::authtoken::password: {get_param: CongressPassword}
+        congress::keystone::authtoken::project_name: 'service'
+        congress::keystone::authtoken::user_domain_name: 'Default'
+        congress::keystone::authtoken::project_domain_name: 'Default'
+        congress::keystone::authtoken::auth_url: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix]}
+        congress::keystone::authtoken::auth_uri: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix]}
+
+        congress::db::mysql::password: {get_param: CongressPassword}
+        congress::db::mysql::user: congress
+        congress::db::mysql::host: {get_param: [EndpointMap, MysqlInternal, host_nobrackets]}
+        congress::db::mysql::dbname: congress
+        congress::db::mysql::allowed_hosts:
+          - '%'
+          - {get_param: [EndpointMap, MysqlInternal, host_nobrackets]}
+        congress::policy::policies: {get_param: CongressPolicies}
+
+      service_config_settings:
+        keystone:
+          congress::keystone::auth::tenant: 'service'
+          congress::keystone::auth::region: {get_param: KeystoneRegion}
+          congress::keystone::auth::password: {get_param: CongressPassword}
+          congress::keystone::auth::public_url: {get_param: [EndpointMap, CongressPublic, uri]}
+          congress::keystone::auth::internal_url: {get_param: [EndpointMap, CongressInternal, uri]}
+          congress::keystone::auth::admin_url: {get_param: [EndpointMap, CongressAdmin, uri]}
+
+      step_config: |
+        include ::tripleo::profile::base::congress
+
+      upgrade_tasks:
+        - name: Check if congress is deployed
+          command: systemctl is-enabled openstack-congress-server
+          tags: common
+          ignore_errors: True
+          register: congress_enabled
+        - name: "PreUpgrade step0,validation: Check service openstack-congress-server is running"
+          shell: /usr/bin/systemctl show 'openstack-congress-server' --property ActiveState | grep '\bactive\b'
+          when: congress_enabled.rc == 0
+          tags: step0,validation
+        - name: Stop congress service
+          tags: step1
+          when: congress_enabled.rc == 0
+          service: name=openstack-congress-server state=stopped
+        - name: Install openstack-congress package if it was disabled
+          tags: step3
+          yum: name=openstack-congress state=latest
+          when: congress_enabled.rc != 0

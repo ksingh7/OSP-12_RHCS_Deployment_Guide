@@ -1,0 +1,92 @@
+    # Note the indentation here is required as it's joined
+    # to create a playbook in deploy-steps.j2
+   
+    #####################################################
+    # Per step puppet configuration of the baremetal host
+    #####################################################
+    - name: Set host puppet debugging fact string
+      set_fact:
+        host_puppet_config_debug: "--debug --verbose"
+      when: enable_debug|default(false)
+    - name: Write the config_step hieradata
+      copy: content="{{dict(step=step|int)|to_json}}" dest=/etc/puppet/hieradata/config_step.json force=true mode=0600
+    - name: Run puppet host configuration for step {{step}}
+      command: >-
+        puppet apply {{ host_puppet_config_debug|default('') }}
+        --modulepath=/etc/puppet/modules:/opt/stack/puppet-modules:/usr/share/openstack-puppet/modules
+        --detailed-exitcodes
+        --logdest syslog --logdest console --color=false
+        /var/lib/tripleo-config/puppet_step_config.pp
+      changed_when: outputs.rc == 2
+      check_mode: no
+      register: outputs
+      failed_when: false
+      no_log: true
+    - debug: var=(outputs.stderr|default('')).split('\n')|union(outputs.stdout_lines|default([]))
+      when: outputs.rc is defined
+      failed_when: outputs.rc not in [0, 2]
+    ######################################
+    # Generate config via docker-puppet.py
+    ######################################
+    - name: Run docker-puppet tasks (generate config)
+      shell: python /var/lib/docker-puppet/docker-puppet.py
+      environment:
+        NET_HOST: 'true'
+        DEBUG: '{{docker_puppet_debug|default(false)}}'
+        PROCESS_COUNT: '{{docker_puppet_process_count|default(3)}}'
+      when: step == "1"
+      changed_when: false
+      check_mode: no
+      register: outputs
+      failed_when: false
+      no_log: true
+    - debug: var=(outputs.stderr|default('')).split('\n')|union(outputs.stdout_lines|default([]))
+      when: outputs.rc is defined
+      failed_when: outputs.rc != 0
+    ##################################################
+    # Per step starting of the containers using paunch
+    ##################################################
+    - name: Check if /var/lib/hashed-tripleo-config/docker-container-startup-config-step_{{step}}.json exists
+      stat:
+        path: /var/lib/tripleo-config/hashed-docker-container-startup-config-step_{{step}}.json
+      register: docker_config_json
+    # Note docker-puppet.py generates the hashed-*.json file, which is a copy of
+    # the *step_n.json with a hash of the generated external config added
+    # This acts as a salt to enable restarting the container if config changes
+    - name: Start containers for step {{step}}
+      command: >-
+        paunch --debug apply
+        --file /var/lib/tripleo-config/hashed-docker-container-startup-config-step_{{step}}.json
+        --config-id tripleo_step{{step}} --managed-by tripleo-{{role_name}}
+      when: docker_config_json.stat.exists
+      changed_when: false
+      check_mode: no
+      register: outputs
+      failed_when: false
+      no_log: true
+    - debug: var=(outputs.stderr|default('')).split('\n')|union(outputs.stdout_lines|default([]))
+      when: outputs.rc is defined
+      failed_when: outputs.rc != 0
+    ########################################################
+    # Bootstrap tasks, only performed on bootstrap_server_id
+    ########################################################
+    - name: Check if /var/lib/docker-puppet/docker-puppet-tasks{{step}}.json exists
+      stat:
+        path: /var/lib/docker-puppet/docker-puppet-tasks{{step}}.json
+      register: docker_puppet_tasks_json
+    - name: Run docker-puppet tasks (bootstrap tasks)
+      shell: python /var/lib/docker-puppet/docker-puppet.py
+      environment:
+        CONFIG: /var/lib/docker-puppet/docker-puppet-tasks{{step}}.json
+        NET_HOST: "true"
+        NO_ARCHIVE: "true"
+        STEP: "{{step}}"
+      when: deploy_server_id == bootstrap_server_id and docker_puppet_tasks_json.stat.exists
+      changed_when: false
+      check_mode: no
+      register: outputs
+      failed_when: false
+      no_log: true
+    - debug: var=(outputs.stderr|default('')).split('\n')|union(outputs.stdout_lines|default([]))
+      when: outputs.rc is defined
+      failed_when: outputs.rc != 0

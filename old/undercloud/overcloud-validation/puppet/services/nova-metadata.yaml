@@ -1,0 +1,89 @@
+heat_template_version: pike
+
+description: >
+  OpenStack Nova API service configured with Puppet
+
+parameters:
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  NovaWorkers:
+    default: 0
+    description: Number of workers for Nova services.
+    type: number
+  EnableInternalTLS:
+    type: boolean
+    default: false
+
+conditions:
+  nova_workers_zero: {equals : [{get_param: NovaWorkers}, 0]}
+
+  use_tls_proxy: {equals : [{get_param: EnableInternalTLS}, true]}
+
+resources:
+
+  TLSProxyBase:
+    type: OS::TripleO::Services::TLSProxyBase
+    properties:
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      EndpointMap: {get_param: EndpointMap}
+      EnableInternalTLS: {get_param: EnableInternalTLS}
+
+outputs:
+  role_data:
+    description: Role data for the Nova Metadata service.
+    value:
+      service_name: nova_metadata
+      config_settings:
+        map_merge:
+        - get_attr: [TLSProxyBase, role_data, config_settings]
+        - nova::api::metadata_listen:
+            if:
+            - use_tls_proxy
+            - 'localhost'
+            - {get_param: [ServiceNetMap, NovaMetadataNetwork]}
+        -
+          if:
+          - nova_workers_zero
+          - {}
+          - nova::api::metadata_workers: {get_param: NovaWorkers}
+        -
+          if:
+          - use_tls_proxy
+          - tripleo::profile::base::nova::api::metadata_tls_proxy_bind_ip:
+              get_param: [ServiceNetMap, NovaMetadataNetwork]
+            tripleo::profile::base::nova::api::metadata_tls_proxy_fqdn:
+              str_replace:
+                template:
+                  "%{hiera('fqdn_$NETWORK')}"
+                params:
+                  $NETWORK: {get_param: [ServiceNetMap, NovaMetadataNetwork]}
+          - {}
+      step_config: ""
+      metadata_settings:
+        get_attr: [TLSProxyBase, role_data, metadata_settings]

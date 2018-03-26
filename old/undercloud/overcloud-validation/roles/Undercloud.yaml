@@ -1,0 +1,59 @@
+###############################################################################
+# Role: Undercloud                                                            #
+###############################################################################
+- name: Undercloud
+  description: |
+    EXPERIMENTAL. A role to deploy the undercloud via heat using the 'openstack
+    undercloud deploy' command.
+  CountDefault: 1
+  disable_constraints: True
+  tags:
+    - primary
+    - controller
+  ServicesDefault:
+    - OS::TripleO::Services::Apache
+    - OS::TripleO::Services::GlanceApi
+    - OS::TripleO::Services::HeatApi
+    - OS::TripleO::Services::HeatApiCfn
+    - OS::TripleO::Services::HeatEngine
+    - OS::TripleO::Services::IronicApi
+    - OS::TripleO::Services::IronicConductor
+    - OS::TripleO::Services::IronicInspector
+    - OS::TripleO::Services::IronicPxe
+    - OS::TripleO::Services::Iscsid
+    - OS::TripleO::Services::Keystone
+    - OS::TripleO::Services::Memcached
+    - OS::TripleO::Services::MistralApi
+    - OS::TripleO::Services::MistralEngine
+    - OS::TripleO::Services::MistralExecutor
+    - OS::TripleO::Services::MySQL
+    - OS::TripleO::Services::NeutronApi
+    - OS::TripleO::Services::NeutronCorePlugin
+    - OS::TripleO::Services::NeutronDhcpAgent
+    - OS::TripleO::Services::NeutronOvsAgent
+    - OS::TripleO::Services::NeutronServer
+    - OS::TripleO::Services::NovaApi
+    - OS::TripleO::Services::NovaConductor
+    - OS::TripleO::Services::NovaIronic
+    - OS::TripleO::Services::NovaMetadata
+    - OS::TripleO::Services::NovaPlacement
+    - OS::TripleO::Services::NovaScheduler
+    - OS::TripleO::Services::Ntp
+    - OS::TripleO::Services::ContainersLogrotateCrond
+    - OS::TripleO::Services::RabbitMQ
+    - OS::TripleO::Services::SwiftProxy
+    - OS::TripleO::Services::SwiftRingBuilder
+    - OS::TripleO::Services::SwiftStorage
+    - OS::TripleO::Services::Tuned
+    - OS::TripleO::Services::UndercloudAodhApi
+    - OS::TripleO::Services::UndercloudAodhEvaluator
+    - OS::TripleO::Services::UndercloudAodhListener
+    - OS::TripleO::Services::UndercloudAodhNotifier
+    - OS::TripleO::Services::UndercloudCeilometerAgentCentral
+    - OS::TripleO::Services::UndercloudCeilometerAgentIpmi
+    - OS::TripleO::Services::UndercloudCeilometerAgentNotification
+    - OS::TripleO::Services::UndercloudGnocchiApi
+    - OS::TripleO::Services::UndercloudGnocchiMetricd
+    - OS::TripleO::Services::UndercloudGnocchiStatsd
+    - OS::TripleO::Services::UndercloudPankoApi
+    - OS::TripleO::Services::Zaqar

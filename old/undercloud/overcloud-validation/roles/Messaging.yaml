@@ -1,0 +1,28 @@
+###############################################################################
+# Role: Messaging                                                             #
+###############################################################################
+- name: Messaging
+  description: |
+    Standalone messaging role with RabbitMQ being managed via Pacemaker
+  networks:
+    - InternalApi
+  HostnameFormatDefault: '%stackname%-messaging-%index%'
+  ServicesDefault:
+    - OS::TripleO::Services::AuditD
+    - OS::TripleO::Services::CACerts
+    - OS::TripleO::Services::CertmongerUser
+    - OS::TripleO::Services::Collectd
+    - OS::TripleO::Services::Docker
+    - OS::TripleO::Services::FluentdClient
+    - OS::TripleO::Services::Kernel
+    - OS::TripleO::Services::Ntp
+    - OS::TripleO::Services::ContainersLogrotateCrond
+    - OS::TripleO::Services::Pacemaker
+    - OS::TripleO::Services::RabbitMQ
+    - OS::TripleO::Services::SensuClient
+    - OS::TripleO::Services::Snmp
+    - OS::TripleO::Services::Timezone
+    - OS::TripleO::Services::TripleoFirewall
+    - OS::TripleO::Services::TripleoPackages
+    - OS::TripleO::Services::Tuned
+

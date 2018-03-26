@@ -1,0 +1,127 @@
+heat_template_version: pike
+
+description: >
+  OpenStack Octavia health-manager service configured with Puppet
+
+parameters:
+  DockerOctaviaHealthManagerImage:
+    description: image
+    type: string
+  DockerOctaviaConfigImage:
+    description: The container image to use for the octavia config_volume
+    type: string
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  UpgradeRemoveUnusedPackages:
+    default: false
+    description: Remove package if the service is being disabled during upgrade
+    type: boolean
+
+resources:
+
+  ContainersCommon:
+    type: ./containers-common.yaml
+
+  OctaviaHealthManagerPuppetBase:
+    type: ../../puppet/services/octavia-health-manager.yaml
+    properties:
+      EndpointMap: {get_param: EndpointMap}
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+outputs:
+  role_data:
+    description: Role data for the Octavia health-manager role.
+    value:
+      service_name: {get_attr: [OctaviaHealthManagerPuppetBase, role_data, service_name]}
+      config_settings: {get_attr: [OctaviaHealthManagerPuppetBase, role_data, config_settings]}
+      logging_source: {get_attr: [OctaviaHealthManagerPuppetBase, role_data, logging_source]}
+      logging_groups: {get_attr: [OctaviaHealthManagerPuppetBase, role_data, logging_groups]}
+      step_config: &step_config
+        get_attr: [OctaviaHealthManagerPuppetBase, role_data, step_config]
+      service_config_settings: {get_attr: [OctaviaHealthManagerPuppetBase, role_data, service_config_settings]}
+      # BEGIN DOCKER SETTINGS #
+      puppet_config:
+        config_volume: octavia
+        puppet_tags: octavia_config
+        step_config: *step_config
+        config_image: {get_param: DockerOctaviaConfigImage}
+      kolla_config:
+        /var/lib/kolla/config_files/octavia_health_manager.json:
+          command: /usr/bin/octavia-health-manager --config-file /usr/share/octavia/octavia-dist.conf --config-file /etc/octavia/octavia.conf --log-file /var/log/octavia/health-manager.log --config-dir /etc/octavia/conf.d/common --config-dir /etc/octavia/conf.d/octavia-health-manager
+          config_files:
+            - source: "/var/lib/kolla/config_files/src/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+      docker_config:
+        step_2:
+          octavia_health_manager_init_dirs:
+            start_order: 0
+            image: &octavia_health_manager_image {get_param: DockerOctaviaHealthManagerImage}
+            user: root
+            volumes:
+              # NOTE(mandre) we need extra dir for the service in /etc/octavia/conf.d
+              # It is normally created as part of the RPM install, but it is
+              # missing here because we use the same config_volume for all
+              # octavia services, hence the same container image to generate
+              # configuration.
+              - /var/lib/config-data/puppet-generated/octavia/etc/octavia:/etc/octavia/
+            command: ['/bin/bash', '-c', 'mkdir -p /etc/octavia/conf.d/octavia-health-manager; chown -R octavia:octavia /etc/octavia/conf.d/octavia-health-manager']
+        step_4:
+          octavia_health_manager:
+            start_order: 2
+            image: *octavia_health_manager_image
+            net: host
+            privileged: false
+            restart: always
+            volumes:
+              list_concat:
+                - {get_attr: [ContainersCommon, volumes]}
+                -
+                  - /var/lib/kolla/config_files/octavia_health_manager.json:/var/lib/kolla/config_files/config.json:ro
+                  - /var/lib/config-data/puppet-generated/octavia/:/var/lib/kolla/config_files/src:ro
+                  - /var/log/containers/octavia:/var/log/octavia
+            environment:
+              - KOLLA_CONFIG_STRATEGY=COPY_ALWAYS
+      host_prep_tasks:
+        - name: create persistent logs directory
+          file:
+            path: /var/log/containers/octavia
+            state: directory
+      upgrade_tasks:
+        - name: Stop and disable octavia_health_manager service
+          tags: step2
+          service: name=openstack-octavia-health-manager state=stopped enabled=no
+        - name: Remove openstack-octavia-health-manager package if operator requests it
+          yum: name=openstack-octavia-health-manager state=removed
+          tags: step2
+          ignore_errors: True
+          when: {get_param: UpgradeRemoveUnusedPackages}

@@ -1,0 +1,121 @@
+heat_template_version: pike
+
+description: >
+  OpenDaylight SDN Controller.
+
+parameters:
+  OpenDaylightPort:
+    default: 8081
+    description: Set opendaylight service port
+    type: number
+  OpenDaylightUsername:
+    default: 'admin'
+    description: The username for the opendaylight server.
+    type: string
+  OpenDaylightPassword:
+    default: 'admin'
+    type: string
+    description: The password for the opendaylight server.
+    hidden: true
+  OpenDaylightConnectionProtocol:
+    description: L7 protocol used for REST access
+    type: string
+    default: 'http'
+  OpenDaylightEnableDHCP:
+    description: Knob to enable/disable ODL DHCP Server
+    type: boolean
+    default: false
+  OpenDaylightFeatures:
+    description: List of features to install with ODL
+    type: comma_delimited_list
+    default: ["odl-netvirt-openstack","odl-netvirt-ui","odl-jolokia"]
+  OpenDaylightApiVirtualIP:
+    type: string
+    default: ''
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  OpenDaylightManageRepositories:
+    description: Whether to manage the OpenDaylight repository
+    type: boolean
+    default: false
+  OpenDaylightSNATMechanism:
+    description: SNAT mechanism to be used
+    default: 'conntrack'
+    type: string
+    constraints:
+      - allowed_values:
+          - conntrack
+          - controller
+
+outputs:
+  role_data:
+    description: Role data for the OpenDaylight service.
+    value:
+      service_name: opendaylight_api
+      config_settings:
+        opendaylight::odl_rest_port: {get_param: OpenDaylightPort}
+        opendaylight::username: {get_param: OpenDaylightUsername}
+        opendaylight::password: {get_param: OpenDaylightPassword}
+        opendaylight::extra_features: {get_param: OpenDaylightFeatures}
+        opendaylight::enable_dhcp: {get_param: OpenDaylightEnableDHCP}
+        opendaylight::odl_bind_ip: {get_param: [ServiceNetMap, OpendaylightApiNetwork]}
+        opendaylight::nb_connection_protocol: {get_param: OpenDaylightConnectionProtocol}
+        opendaylight::manage_repositories: {get_param: OpenDaylightManageRepositories}
+        tripleo.opendaylight_api.firewall_rules:
+              '137 opendaylight api':
+                dport:
+                  - {get_param: OpenDaylightPort}
+                  - 6640
+                  - 6653
+                  - 2550
+                  - 8185
+        opendaylight::snat_mechanism: {get_param: OpenDaylightSNATMechanism}
+      step_config: |
+        include tripleo::profile::base::neutron::opendaylight
+      upgrade_tasks:
+        - name: Check if opendaylight is deployed
+          command: systemctl is-enabled opendaylight
+          tags: common
+          ignore_errors: True
+          register: opendaylight_enabled
+        - name: "PreUpgrade step0,validation: Check service opendaylight is running"
+          shell: /usr/bin/systemctl show 'opendaylight' --property ActiveState | grep '\bactive\b'
+          when: opendaylight_enabled.rc == 0
+          tags: step0,validation
+        - name: Stop opendaylight service
+          tags: step1
+          when: opendaylight_enabled.rc == 0
+          service: name=opendaylight state=stopped
+        - name: Removes ODL snapshots, data, journal directories
+          file:
+            state: absent
+            path: /opt/opendaylight/{{item}}
+          tags: step2
+          with_items:
+            - snapshots
+            - data
+            - journal

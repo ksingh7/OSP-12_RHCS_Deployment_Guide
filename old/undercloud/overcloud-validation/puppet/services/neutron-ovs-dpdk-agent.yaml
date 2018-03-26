@@ -1,0 +1,98 @@
+heat_template_version: pike
+
+description: >
+  OpenStack Neutron OVS DPDK configured with Puppet for Compute Role
+
+parameters:
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  # below parameters has to be set in neutron agent only for compute nodes.
+  # as of now there is no other usecase for these parameters except dpdk.
+  # should be moved to compute only ovs agent in case of any other usecases.
+  NeutronDatapathType:
+    default: ""
+    description: Datapath type for ovs bridges
+    type: string
+  NeutronVhostuserSocketDir:
+    default: ""
+    description: The vhost-user socket directory for OVS
+    type: string
+
+resources:
+
+  NeutronOvsAgent:
+    type: ./neutron-ovs-agent.yaml
+    properties:
+      ServiceData: {get_param: ServiceData}
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      EndpointMap: {get_param: EndpointMap}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+  # Merging role-specific parameters (RoleParameters) with the default parameters.
+  # RoleParameters will have the precedence over the default parameters.
+  RoleParametersValue:
+    type: OS::Heat::Value
+    properties:
+      type: json
+      value:
+        map_replace:
+          - map_replace:
+            - neutron::agents::ml2::ovs::datapath_type: NeutronDatapathType
+              neutron::agents::ml2::ovs::vhostuser_socket_dir: NeutronVhostuserSocketDir
+            - values: {get_param: [RoleParameters]}
+          - values:
+              NeutronDatapathType: {get_param: NeutronDatapathType}
+              NeutronVhostuserSocketDir: {get_param: NeutronVhostuserSocketDir}
+
+  Ovs:
+    type: ./openvswitch.yaml
+    properties:
+      ServiceNetMap: {get_param: ServiceNetMap}
+      DefaultPasswords: {get_param: DefaultPasswords}
+      EndpointMap: {get_param: EndpointMap}
+      RoleName: {get_param: RoleName}
+      RoleParameters: {get_param: RoleParameters}
+
+outputs:
+  role_data:
+    description: Role data for the Neutron OVS DPDK Agent service.
+    value:
+      service_name: neutron_ovs_dpdk_agent
+      config_settings:
+        map_merge:
+          - map_replace:
+            - get_attr: [NeutronOvsAgent, role_data, config_settings]
+            - keys:
+                tripleo.neutron_ovs_agent.firewall_rules: tripleo.neutron_ovs_dpdk_agent.firewall_rules
+          - neutron::agents::ml2::ovs::enable_dpdk: true
+          - get_attr: [Ovs, role_data, config_settings]
+          - get_attr: [RoleParametersValue, value]
+      step_config: {get_attr: [NeutronOvsAgent, role_data, step_config]}
+      upgrade_tasks:
+        get_attr: [Ovs, role_data, upgrade_tasks]
