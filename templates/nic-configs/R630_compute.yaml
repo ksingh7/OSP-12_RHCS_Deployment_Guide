@@ -117,7 +117,7 @@ resources:
                   next_hop:
                     get_param: ControlPlaneDefaultRoute
               - type: ovs_bridge
-                name: bridge_int_sto_ten
+                name: bridge_name
                 members:
                 - type: linux_bond
                   name: bond1
