@@ -1,5 +1,5 @@
 parameter_defaults:
-  NodeRootPassword: refarch123 
+
   Debug: true
 
   NovaReservedHostMemory: 1024
