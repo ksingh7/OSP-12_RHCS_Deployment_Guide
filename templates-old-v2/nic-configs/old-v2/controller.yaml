@@ -1,6 +1,6 @@
 heat_template_version: pike
 description: >
-  Software Config to drive os-net-config with 2 bonded nics on a bridge with VLANs (bonded interface) for Internal API, Storage and Tenant Networks.
+  Software Config to drive os-net-config with 2 intrfaces bonded as bridge with VLANs attached for the controller role.
 parameters:
   ControlPlaneIp:
     default: ''
@@ -54,20 +54,13 @@ parameters:
     default: 60
     description: Vlan ID for the management network traffic.
     type: number
-  ExternalInterfaceDefaultRoute: # Not used by default in this template
-    default: ''
-    description: The default route of the external network.
+  ExternalInterfaceDefaultRoute:
+    default: '10.0.0.1'
+    description: default route for the external network
     type: string
   ControlPlaneSubnetCidr: # Override this via parameter_defaults
     default: '24'
     description: The subnet CIDR of the control plane network.
-    type: string
-  ControlPlaneDefaultRoute: # Override this via parameter_defaults
-    description: The default route of the control plane network.
-    type: string
-  ManagementInterfaceDefaultRoute: # Commented out by default in this template
-    default: unset
-    description: The default route of the management network.
     type: string
   DnsServers: # Override this via parameter_defaults
     default: []
@@ -85,7 +78,7 @@ parameters:
     constraints:
     - allowed_pattern: ^((?!balance.tcp).)*$
       description: 'The balance-tcp bond mode is known to cause packet loss and
-        should not be used in BondInterfaceOvsOptions.'
+        should not be used in BondInterfaceOvsOptions.'    
 resources:
   OsNetConfigImpl:
     type: OS::Heat::SoftwareConfig
@@ -98,21 +91,22 @@ resources:
           params:
             $network_config:
               network_config:
-#              - type: ovs_bridge
-#                name: br-floating
-#                dns_servers:
-#                  get_param: DnsServers
-#                addresses:
-#                - ip_netmask:
-#                    get_param: ExternalIpSubnet
-#                routes:
-#                  - default: true
-#                    next_hop:
-#                      get_param: ExternalInterfaceDefaultRoute
-#                members:
-#                - type: interface
-#                  name: em3
-#                  use_dhcp: false
+
+              - type: ovs_bridge
+                name: br-floating
+                dns_servers:
+                  get_param: DnsServers
+                addresses:
+                - ip_netmask:
+                    get_param: ExternalIpSubnet
+                routes:
+                  - default: true
+                    next_hop:
+                      get_param: ExternalInterfaceDefaultRoute
+                members:
+                - type: interface
+                  name: em3
+                  use_dhcp: false
 
               - type: ovs_bridge
                 name: bridge_name
@@ -164,13 +158,13 @@ resources:
                   addresses:
                   - ip_netmask:
                       get_param: StorageIpSubnet
-#                - type: vlan
-#                  device: bond1
-#                  vlan_id:
-#                    get_param: StorageMgmtNetworkVlanID
-#                  addresses:
-#                  - ip_netmask:
-#                      get_param: StorageMgmtIpSubnet
+                - type: vlan
+                  device: bond1
+                  vlan_id:
+                    get_param: StorageMgmtNetworkVlanID
+                  addresses:
+                  - ip_netmask:
+                      get_param: StorageMgmtIpSubnet
                 - type: vlan
                   device: bond1
                   vlan_id:

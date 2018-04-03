@@ -60,7 +60,6 @@ parameter_defaults:
   ExternalAllocationPools: [{'start': '192.168.122.100', 'end': '192.168.122.200'}]
   # Set to the router gateway on the external network
   ExternalInterfaceDefaultRoute: 192.168.122.1
-  ExternalNetworkVlanID: 501 
 
   # Add in configuration for the Control Plane
   ControlPlaneSubnetCidr: "24"

@@ -54,9 +54,9 @@ parameters:
     default: 60
     description: Vlan ID for the management network traffic.
     type: number
-  ExternalInterfaceDefaultRoute: # Not used by default in this template
-    default: ''
-    description: The default route of the external network.
+  ExternalInterfaceDefaultRoute:
+    default: '10.0.0.1'
+    description: default route for the external network
     type: string
   ControlPlaneSubnetCidr: # Override this via parameter_defaults
     default: '24'
@@ -68,7 +68,7 @@ parameters:
   ManagementInterfaceDefaultRoute: # Commented out by default in this template
     default: unset
     description: The default route of the management network.
-    type: string
+    type: string  
   DnsServers: # Override this via parameter_defaults
     default: []
     description: A list of DNS servers (2 max for some implementations) that will be added to resolv.conf.
@@ -98,21 +98,21 @@ resources:
           params:
             $network_config:
               network_config:
-#              - type: ovs_bridge
-#                name: br-floating
-#                dns_servers:
-#                  get_param: DnsServers
-#                addresses:
-#                - ip_netmask:
-#                    get_param: ExternalIpSubnet
-#                routes:
-#                  - default: true
-#                    next_hop:
-#                      get_param: ExternalInterfaceDefaultRoute
-#                members:
-#                - type: interface
-#                  name: em3
-#                  use_dhcp: false
+              - type: ovs_bridge
+                name: br-floating
+                dns_servers:
+                  get_param: DnsServers
+                addresses:
+                - ip_netmask:
+                    get_param: ExternalIpSubnet
+                routes:
+                  - default: true
+                    next_hop:
+                      get_param: ExternalInterfaceDefaultRoute
+                members:
+                - type: interface
+                  name: em1
+                  use_dhcp: false
 
               - type: ovs_bridge
                 name: bridge_name
@@ -135,10 +135,10 @@ resources:
                     get_param: BondInterfaceOvsOptions
                   members:
                   - type: interface
-                    name: em1
+                    name: p1p1
                     primary: true
                   - type: interface
-                    name: em2
+                    name: p1p2
 #                - type: vlan
 #                  device: bond1
 #                  vlan_id:
@@ -164,13 +164,13 @@ resources:
                   addresses:
                   - ip_netmask:
                       get_param: StorageIpSubnet
-#                - type: vlan
-#                  device: bond1
-#                  vlan_id:
-#                    get_param: StorageMgmtNetworkVlanID
-#                  addresses:
-#                  - ip_netmask:
-#                      get_param: StorageMgmtIpSubnet
+                - type: vlan
+                  device: bond1
+                  vlan_id:
+                    get_param: StorageMgmtNetworkVlanID
+                  addresses:
+                  - ip_netmask:
+                      get_param: StorageMgmtIpSubnet
                 - type: vlan
                   device: bond1
                   vlan_id:

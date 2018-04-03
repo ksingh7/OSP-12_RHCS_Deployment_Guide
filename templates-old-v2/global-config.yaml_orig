@@ -1,0 +1,100 @@
+parameter_defaults:
+
+  Debug: true 
+
+  NovaReservedHostMemory: 1024
+  
+  ControllerCount: 1
+  OvercloudControllerFlavor: control
+  
+  R220ComputeCount: 4
+  OvercloudComputeFlavor: R220compute
+
+  R630ComputeCount: 2
+  OvercloudComputeFlavor: R630compute
+
+  CephStorageCount: 5
+  OvercloudCephStorageFlavor: ceph-storage
+
+  ControllerSchedulerHints:
+    'capabilities:node': 'controller-%index%'
+  CephStorageSchedulerHints:
+    'capabilities:node': 'cephstorage-%index%'
+  R630ComputeSchedulerHints:
+    'capabilities:node': 'compute-r630-%index%'
+  R220ComputeSchedulerHints:
+    'capabilities:node': 'compute-r220-%index%'
+  
+  HostnameMap:
+    controller-0: controller-0
+
+    R630compute-0: R630compute-0
+    R630compute-1: R630compute-1
+
+    R220compute-0: R220compute-0
+    R220compute-1: R220compute-1
+    R220compute-2: R220compute-2
+    R220compute-3: R220compute-3
+
+    cephstorage-0: ceph-storage-0
+    cephstorage-1: ceph-storage-1
+    cephstorage-2: ceph-storage-2
+    cephstorage-3: ceph-storage-3
+    cephstorage-4: ceph-storage-4
+
+ # Misc Config
+  NtpServer: 'pool.ntp.org'
+  NeutronNetworkType: 'vxlan,vlan'
+  NeutronTunnelTypes: 'vxlan'
+
+  ControllerIPs:
+    # Each controller will get an IP from the lists below, first controller, first IP
+    internal_api:
+    - 172.17.1.201
+    tenant:
+    - 172.17.2.201    
+    storage:
+    - 172.17.3.201
+    storage_mgmt:
+    - 172.17.4.201
+    external:
+    - 192.168.122.201
+
+  ComputeIPs:
+    # Each compute will get an IP from the lists below, first compute, first IP
+    internal_api:
+    - 172.17.1.211
+    - 172.17.1.212
+    - 172.17.1.213
+    - 172.17.1.214
+    - 172.17.1.215
+    - 172.17.1.216
+    storage:
+    - 172.17.3.211
+    - 172.17.3.212
+    - 172.17.3.213
+    - 172.17.3.214
+    - 172.17.3.215
+    - 172.17.3.216                
+    tenant:
+    - 172.17.2.211
+    - 172.17.2.212
+    - 172.17.2.213
+    - 172.17.2.214
+    - 172.17.2.215
+    - 172.17.2.216
+
+  CephStorageIPs:
+    # Each ceph node will get an IP from the lists below, first node, first IP
+    storage:
+    - 172.17.3.221
+    - 172.17.3.222
+    - 172.17.3.223
+    - 172.17.3.224
+    - 172.17.3.225
+    storage_mgmt:
+    - 172.17.4.221
+    - 172.17.4.222
+    - 172.17.4.223
+    - 172.17.4.224
+    - 172.17.4.225

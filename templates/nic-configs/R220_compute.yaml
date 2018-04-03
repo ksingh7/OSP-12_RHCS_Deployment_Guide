@@ -139,17 +139,17 @@ resources:
                     primary: true
                   - type: interface
                     name: p1p2
-                - type: vlan
-                  device: bond1
-                  vlan_id:
-                    get_param: ExternalNetworkVlanID
-                  addresses:
-                  - ip_netmask:
-                      get_param: ExternalIpSubnet
-                  routes:
-                  - default: true
-                    next_hop:
-                      get_param: ExternalInterfaceDefaultRoute
+#                - type: vlan
+#                  device: bond1
+#                  vlan_id:
+#                    get_param: ExternalNetworkVlanID
+#                  addresses:
+#                  - ip_netmask:
+#                      get_param: ExternalIpSubnet
+#                  routes:
+#                  - default: true
+#                    next_hop:
+#                      get_param: ExternalInterfaceDefaultRoute
                 - type: vlan
                   device: bond1
                   vlan_id:
@@ -164,13 +164,13 @@ resources:
                   addresses:
                   - ip_netmask:
                       get_param: StorageIpSubnet
-                - type: vlan
-                  device: bond1
-                  vlan_id:
-                    get_param: StorageMgmtNetworkVlanID
-                  addresses:
-                  - ip_netmask:
-                      get_param: StorageMgmtIpSubnet
+#                - type: vlan
+#                  device: bond1
+#                  vlan_id:
+#                    get_param: StorageMgmtNetworkVlanID
+#                  addresses:
+#                  - ip_netmask:
+#                      get_param: StorageMgmtIpSubnet
                 - type: vlan
                   device: bond1
                   vlan_id:
