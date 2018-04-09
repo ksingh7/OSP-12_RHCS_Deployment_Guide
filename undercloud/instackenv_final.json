@@ -18,7 +18,7 @@
       "pm_addr": "172.21.32.4",
       "pm_type": "pxe_ipmitool",
       "arch": "x86_64",
-      "capabilities": "profile:R630compute,node:R630compute-0,boot_option:local"
+      "capabilities": "profile:R630compute,node:compute-r630-0,boot_option:local"
      },
      {
       "mac":["24:6E:96:05:D1:60"],     
@@ -28,7 +28,7 @@
       "pm_addr": "172.21.32.5",
       "pm_type": "pxe_ipmitool",
       "arch": "x86_64",
-      "capabilities": "profile:R630compute,node:R630compute-1,boot_option:local"
+      "capabilities": "profile:R630compute,node:compute-r630-1,boot_option:local"
      },
      {
       "mac":["A0:36:9F:91:61:9C"],     
@@ -38,7 +38,7 @@
       "pm_addr": "172.21.32.12",
       "pm_type": "pxe_ipmitool",
       "arch": "x86_64",
-      "capabilities": "profile:R220compute,node:R220compute-0,boot_option:local"
+      "capabilities": "profile:R220compute,node:compute-r220-0,boot_option:local"
      },
      {
       "mac":["A0:36:9F:91:5C:C8"],     
@@ -48,7 +48,7 @@
       "pm_addr": "172.21.32.19",
       "pm_type": "pxe_ipmitool",
       "arch": "x86_64",
-      "capabilities": "profile:R220compute,node:R220compute-1,boot_option:local"
+      "capabilities": "profile:R220compute,node:compute-r220-1,boot_option:local"
      },
      {
       "mac":["A0:36:9F:91:5F:28"],     
@@ -58,7 +58,7 @@
       "pm_addr": "172.21.32.20",
       "pm_type": "pxe_ipmitool",
       "arch": "x86_64",
-      "capabilities": "profile:R220compute,node:R220compute-2,boot_option:local"
+      "capabilities": "profile:R220compute,node:compute-r220-2,boot_option:local"
      },
      {
       "mac":["A0:36:9F:91:5C:3C"],     
@@ -68,7 +68,7 @@
       "pm_addr": "172.21.32.21",
       "pm_type": "pxe_ipmitool",
       "arch": "x86_64",
-      "capabilities": "profile:R220compute,node:R220compute-3,boot_option:local"
+      "capabilities": "profile:R220compute,node:compute-r220-3,boot_option:local"
      },
      {
       "mac":["24:6E:96:06:C4:30"],     
@@ -78,7 +78,7 @@
       "pm_addr": "172.21.32.6",
       "pm_type": "pxe_ipmitool",
       "arch": "x86_64",
-      "capabilities": "profile:ceph-storage,node:ceph-storage-0,boot_option:local"
+      "capabilities": "profile:ceph-storage,node:cephstorage-0,boot_option:local"
      },
      {
       "mac":["24:6E:96:06:B8:F8"],     
@@ -88,7 +88,7 @@
       "pm_addr": "172.21.32.7",
       "pm_type": "pxe_ipmitool",
       "arch": "x86_64",
-      "capabilities": "profile:ceph-storage,node:ceph-storage-1,boot_option:local"
+      "capabilities": "profile:ceph-storage,node:cephstorage-1,boot_option:local"
      },
      {
       "mac":["24:6E:96:06:C2:C8"],
@@ -98,7 +98,7 @@
       "pm_addr": "172.21.32.8",
       "pm_type": "pxe_ipmitool",
       "arch": "x86_64",
-      "capabilities": "profile:ceph-storage,node:ceph-storage-2,boot_option:local"
+      "capabilities": "profile:ceph-storage,node:cephstorage-2,boot_option:local"
      },
      {
       "mac":["24:6E:96:06:C3:60"],     
@@ -108,7 +108,7 @@
       "pm_addr": "172.21.32.9",
       "pm_type": "pxe_ipmitool",
       "arch": "x86_64",
-      "capabilities": "profile:ceph-storage,node:ceph-storage-3,boot_option:local"
+      "capabilities": "profile:ceph-storage,node:cephstorage-3,boot_option:local"
      },
      {
       "mac":["24:6E:96:02:AF:38"],     
@@ -118,7 +118,7 @@
       "pm_addr": "172.21.32.11",
       "pm_type": "pxe_ipmitool",
       "arch": "x86_64",
-      "capabilities": "profile:ceph-storage,node:ceph-storage-4,boot_option:local"
+      "capabilities": "profile:ceph-storage,node:cephstorage-4,boot_option:local"
      }
  ]
 }

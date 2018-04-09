@@ -8,12 +8,10 @@ parameter_defaults:
   OvercloudControllerFlavor: control
 
   R220ComputeCount: 4
-#  OvercloudComputeFlavor: R220compute
-  OvercloudR220ComputeFlavor: R220compute
+  OvercloudComputeFlavor: R220compute
 
   R630ComputeCount: 2
-#  OvercloudComputeFlavor: R630compute
-  OvercloudR630ComputeFlavor: R630compute
+  OvercloudComputeFlavor: R630compute
 
   CephStorageCount: 5
   OvercloudCephStorageFlavor: ceph-storage
@@ -46,7 +44,7 @@ parameter_defaults:
 
  # Misc Config
   NtpServer: 'pool.ntp.org'
-  NeutronNetworkType: 'vxlan'
+  NeutronNetworkType: 'vxlan,vlan'
   NeutronTunnelTypes: 'vxlan'
 
   ControllerIPs:
@@ -60,7 +58,7 @@ parameter_defaults:
     storage_mgmt:
     - 172.17.4.201
     external:
-    - 172.21.0.160
+    - 192.168.122.201
 
   R630ComputeIPs:
     # Each compute will get an IP from the lists below, first compute, first IP
@@ -68,13 +66,13 @@ parameter_defaults:
     - 172.17.1.211
     - 172.17.1.212
 
-    tenant:
-    - 172.17.2.211
-    - 172.17.2.212
-
     storage:
     - 172.17.3.211
     - 172.17.3.212
+
+    tenant:
+    - 172.17.2.211
+    - 172.17.2.212
 
   R220ComputeIPs:
     # Each compute will get an IP from the lists below, first compute, first IP
@@ -83,18 +81,16 @@ parameter_defaults:
     - 172.17.1.214
     - 172.17.1.215
     - 172.17.1.216
-
-    tenant:
-    - 172.17.2.213
-    - 172.17.2.214
-    - 172.17.2.215
-    - 172.17.2.216
-
     storage:
     - 172.17.3.213
     - 172.17.3.214
     - 172.17.3.215
     - 172.17.3.216
+    tenant:
+    - 172.17.2.213
+    - 172.17.2.214
+    - 172.17.2.215
+    - 172.17.2.216
 
   CephStorageIPs:
     # Each ceph node will get an IP from the lists below, first node, first IP

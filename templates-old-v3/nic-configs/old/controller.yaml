@@ -1,6 +1,7 @@
 heat_template_version: pike
 description: >
-  Software Config to drive os-net-config with 2 intrfaces bonded as bridge with VLANs attached for the controller role.
+  Software Config to drive os-net-config to configure dedicated interface for Control Plane Network and VLANs (bonded interface) for Internal API, Storage, Storage Management and Tenant Networks.
+
 parameters:
   ControlPlaneIp:
     default: ''
@@ -30,6 +31,16 @@ parameters:
     default: ''
     description: IP address/subnet on the management network
     type: string
+  BondInterfaceOvsOptions:
+    default: ''
+    description: 'The ovs_options or bonding_options string for the bond
+      interface. Set things like lacp=active and/or bond_mode=balance-slb
+      for OVS bonds or like mode=4 for Linux bonds using this option.'
+    type: string
+    constraints:
+    - allowed_pattern: ^((?!balance.tcp).)*$
+      description: 'The balance-tcp bond mode is known to cause packet loss and
+        should not be used in BondInterfaceOvsOptions.'
   ExternalNetworkVlanID:
     default: 10
     description: Vlan ID for the external network traffic.
@@ -54,9 +65,16 @@ parameters:
     default: 60
     description: Vlan ID for the management network traffic.
     type: number
+  ControlPlaneDefaultRoute: # Override this via parameter_defaults
+    description: The default route of the control plane network.
+    type: string
   ExternalInterfaceDefaultRoute:
-    default: '10.0.0.1'
+    default: 10.0.0.1
     description: default route for the external network
+    type: string
+  ManagementInterfaceDefaultRoute: # Commented out by default in this template
+    default: unset
+    description: The default route of the management network.
     type: string
   ControlPlaneSubnetCidr: # Override this via parameter_defaults
     default: '24'
@@ -69,16 +87,6 @@ parameters:
   EC2MetadataIp: # Override this via parameter_defaults
     description: The IP address of the EC2 metadata server.
     type: string
-  BondInterfaceOvsOptions:
-    default: ''
-    description: 'The ovs_options or bonding_options string for the bond
-      interface. Set things like lacp=active and/or bond_mode=balance-slb
-      for OVS bonds or like mode=4 for Linux bonds using this option.'
-    type: string
-    constraints:
-    - allowed_pattern: ^((?!balance.tcp).)*$
-      description: 'The balance-tcp bond mode is known to cause packet loss and
-        should not be used in BondInterfaceOvsOptions.'
 resources:
   OsNetConfigImpl:
     type: OS::Heat::SoftwareConfig
@@ -91,27 +99,9 @@ resources:
           params:
             $network_config:
               network_config:
-
-#              - type: ovs_bridge
-#                name: br-floating
-#                dns_servers:
-#                  get_param: DnsServers
-#                addresses:
-#                - ip_netmask:
-#                    get_param: ExternalIpSubnet
-#                routes:
-#                  - default: true
-#                    next_hop:
-#                      get_param: ExternalInterfaceDefaultRoute
-#                members:
-#                - type: interface
-#                  name: em3
-#                  use_dhcp: false
-
-              - type: ovs_bridge
-                name: bridge_name
-                dns_servers:
-                  get_param: DnsServers
+              - type: interface
+                name: em3
+                use_dhcp: false
                 addresses:
                 - ip_netmask:
                     list_join:
@@ -122,6 +112,17 @@ resources:
                 - ip_netmask: 169.254.169.254/32
                   next_hop:
                     get_param: EC2MetadataIp
+              - type: ovs_bridge
+                name: bridge_name
+                dns_servers:
+                  get_param: DnsServers
+                addresses:
+                - ip_netmask:
+                    get_param: ExternalIpSubnet
+                routes:
+                  - default: true
+                    next_hop:
+                      get_param: ExternalInterfaceDefaultRoute
                 members:
                 - type: linux_bond
                   name: bond1
@@ -133,15 +134,13 @@ resources:
                     primary: true
                   - type: interface
                     name: em2
-                - type: vlan
-                  device: bond1
-                  vlan_id:
-                    get_param: ExternalNetworkVlanID
-                  addresses:
-                  - ip_netmask:
-                      get_param: ExternalIpSubnet
-                  defroute: no
-                  routes: no
+#                - type: vlan
+#                  device: bond1
+#                  vlan_id:
+#                    get_param: ExternalNetworkVlanID
+#                  addresses:
+#                  - ip_netmask:
+#                      get_param: ExternalIpSubnet
 #                  routes:
 #                  - default: true
 #                    next_hop:

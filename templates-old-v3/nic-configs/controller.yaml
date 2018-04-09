@@ -140,12 +140,10 @@ resources:
                   addresses:
                   - ip_netmask:
                       get_param: ExternalIpSubnet
-                  defroute: no
-                  routes: no
-#                  routes:
-#                  - default: true
-#                    next_hop:
-#                      get_param: ExternalInterfaceDefaultRoute
+                  routes:
+                  - default: true
+                    next_hop:
+                      get_param: ExternalInterfaceDefaultRoute
                 - type: vlan
                   device: bond1
                   vlan_id:
