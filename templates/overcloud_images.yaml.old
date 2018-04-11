@@ -1,6 +1,6 @@
-# Generated with the following on 2018-04-10T17:22:27.041766
+# Generated with the following on 2018-03-16T14:16:58.019989
 #
-#   openstack overcloud container image prepare --namespace=192.168.120.1:8787/rhosp12 --prefix=openstack- --tag=latest -e /usr/share/openstack-tripleo-heat-templates/environments/ceph-ansible/ceph-ansible.yaml --set ceph_namespace=192.168.120.1:8787/rhceph --set ceph_image=rhceph-3-rhel7 --output-env-file=/home/stack/templates/overcloud_images.yaml
+#   openstack overcloud container image prepare --namespace=192.168.120.1:8787/rhosp12 --prefix=openstack- --tag=latest -e /usr/share/openstack-tripleo-heat-templates/environments/ceph-ansible/ceph-ansible.yaml --set ceph_namespace=192.168.24.1:8787/rhceph --set ceph_image=rhceph-3-rhel7 --output-env-file=/home/stack/templates/overcloud_images.yaml
 #
 
 parameter_defaults:
@@ -13,7 +13,7 @@ parameter_defaults:
   DockerCeilometerComputeImage: 192.168.120.1:8787/rhosp12/openstack-ceilometer-compute:latest
   DockerCeilometerConfigImage: 192.168.120.1:8787/rhosp12/openstack-ceilometer-central:latest
   DockerCeilometerNotificationImage: 192.168.120.1:8787/rhosp12/openstack-ceilometer-notification:latest
-  DockerCephDaemonImage: 192.168.120.1:8787/rhceph/rhceph-3-rhel7:latest
+  DockerCephDaemonImage: 192.168.24.1:8787/rhceph/rhceph-3-rhel7:latest
   DockerClustercheckConfigImage: 192.168.120.1:8787/rhosp12/openstack-mariadb:latest
   DockerClustercheckImage: 192.168.120.1:8787/rhosp12/openstack-mariadb:latest
   DockerCrondConfigImage: 192.168.120.1:8787/rhosp12/openstack-cron:latest

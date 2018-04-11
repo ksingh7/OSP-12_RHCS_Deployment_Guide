@@ -84,4 +84,3 @@ container_images:
 - imagename: registry.access.redhat.com/rhosp12/openstack-swift-proxy-server:latest
 - imagename: registry.access.redhat.com/rhosp12/openstack-zaqar:latest
 - imagename: registry.access.redhat.com/rhceph/rhceph-3-rhel7:latest
-#- imagename: registry.access.redhat.com/rhceph/rhceph-2-rhel7:latest
