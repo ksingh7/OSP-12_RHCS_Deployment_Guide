@@ -26,3 +26,8 @@ then
     fi
   done
 fi
+
+if [[ `hostname` = *"controller"* ]] 
+then
+    route del -net 172.21.0.0 gw 0.0.0.0 netmask 255.255.240.0 dev vlan190
+fi

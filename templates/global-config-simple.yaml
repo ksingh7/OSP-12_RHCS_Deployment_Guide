@@ -1,0 +1,48 @@
+parameter_defaults:
+  NodeRootPassword: refarch123 
+  Debug: true
+
+  NovaReservedHostMemory: 1024
+
+  ControllerCount: 1
+  OvercloudControllerFlavor: control
+
+  R220ComputeCount: 4
+#  OvercloudComputeFlavor: R220compute
+  OvercloudR220ComputeFlavor: R220compute
+
+  R630ComputeCount: 2
+#  OvercloudComputeFlavor: R630compute
+  OvercloudR630ComputeFlavor: R630compute
+
+  CephStorageCount: 5
+  OvercloudCephStorageFlavor: ceph-storage
+
+  ControllerSchedulerHints:
+    'capabilities:node': 'controller-%index%'
+  CephStorageSchedulerHints:
+    'capabilities:node': 'cephstorage-%index%'
+  R630ComputeSchedulerHints:
+    'capabilities:node': 'compute-r630-%index%'
+  R220ComputeSchedulerHints:
+    'capabilities:node': 'compute-r220-%index%'
+
+  HostnameMap:
+    controller-0: controller-0
+
+    R630compute-0: R630compute-0
+    R630compute-1: R630compute-1
+
+    R220compute-0: R220compute-0
+    R220compute-1: R220compute-1
+    R220compute-2: R220compute-2
+    R220compute-3: R220compute-3
+
+    cephstorage-0: ceph-storage-0
+    cephstorage-1: ceph-storage-1
+    cephstorage-2: ceph-storage-2
+    cephstorage-3: ceph-storage-3
+    cephstorage-4: ceph-storage-4
+
+ # Misc Config
+  NtpServer: 'pool.ntp.org'

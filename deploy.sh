@@ -1,11 +1,5 @@
-# OSP-12_RHCS_Deployment_Guide
-Red Hat OpenStack Platform 12 and Red Hat Ceph Storage deploying guide 
-
-```
-sh deploy.sh
-```
-
-```
+#!/bin/bash
+source ~/stackrc
 time openstack overcloud deploy \
    --templates /usr/share/openstack-tripleo-heat-templates \
    -r /home/stack/templates/roles_data.yaml \
@@ -15,4 +9,3 @@ time openstack overcloud deploy \
    -e /home/stack/templates/network-environment.yaml \
    -e /home/stack/templates/global-config.yaml \
    -e /home/stack/templates/ceph-config.yaml > /tmp/overcloud.logs 2>&1
-```

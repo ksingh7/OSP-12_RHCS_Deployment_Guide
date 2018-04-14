@@ -1,6 +1,5 @@
 resource_registry:
-
-# Just in case we want to redeploy - BE careful in production.
+  # Just in case we want to redeploy - BE careful in production.
   OS::TripleO::NodeUserData: /home/stack/templates/wipe-disks.yaml
 
 parameter_defaults:
@@ -58,7 +57,7 @@ parameter_defaults:
       pg_num: 4096
       pgp_num: 4096
 
-  CephAnsiblePlaybookVerbosity: 3
+  CephAnsiblePlaybookVerbosity: 1
 
   CephConfigOverrides:
     mon_osd_full_ratio: 90
