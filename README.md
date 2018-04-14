@@ -16,3 +16,5 @@ time openstack overcloud deploy \
    -e /home/stack/templates/global-config.yaml \
    -e /home/stack/templates/ceph-config.yaml > /tmp/overcloud.logs 2>&1
 ```
+- Apply fix to BZ1566684
+https://bugzilla.redhat.com/show_bug.cgi?id=1566684#c8
