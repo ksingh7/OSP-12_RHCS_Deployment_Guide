@@ -54,8 +54,8 @@ parameter_defaults:
 
   CephPools:
     - name: vms
-      pg_num: 4096
-      pgp_num: 4096
+      pg_num: 1024
+      pgp_num: 1024
 
   CephAnsiblePlaybookVerbosity: 1
 
