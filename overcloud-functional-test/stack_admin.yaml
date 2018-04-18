@@ -22,19 +22,19 @@ parameters:
   provider_net_cidr:
     type: string
     description: CIDR for the provider(external) network
-    default: 192.168.122.0/24
+    default: 172.21.0.0/24
   provider_net_gateway:
     type: string
     description: GW for the external network
-    default: 192.168.122.1
+    default: 172.21.15.254
   provider_net_pool_start:
     type: string 
     description: start of the IP pool for the external network
-    default: 192.168.122.151
+    default: 172.21.0.10
   provider_net_pool_end:
     type: string
     description: end of the IP pool for the external network
-    default: 192.168.122.200
+    default: 172.21.0.159
   tenant_net_name:
     type: string
     description: Name of the tenant network.
