@@ -26,11 +26,11 @@ parameters:
   provider_net_cidr:
     type: string
     description: CIDR for the provider(external) network
-    default: 192.168.122.0/24
+    default: 172.21.0.0/24
   provider_network:
     type: string
     description: Name of the provider network.
-    default: external
+    default: public
 
 resources:
 
