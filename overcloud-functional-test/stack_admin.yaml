@@ -1,0 +1,162 @@
+heat_template_version: 2016-10-14
+
+description: This template will create an external network, upload an image, create a tenant and a user with a role to it, and create a tenant network and router.
+
+parameters:
+  project_name:
+    type: string
+    description: Project name that will be created it.
+    default: 'tenant1'
+  user_role:
+    type: string
+    description: User role to be assigned.
+    default: 'ResellerAdmin'
+  project_user:
+    type: string
+    description: User to be created inside the project.
+    default: 'user1'
+  project_user_passwd:
+    type: string
+    description: Password for the project defined user
+    default: 'redhat'
+  provider_net_cidr:
+    type: string
+    description: CIDR for the provider(external) network
+    default: 192.168.122.0/24
+  provider_net_gateway:
+    type: string
+    description: GW for the external network
+    default: 192.168.122.1
+  provider_net_pool_start:
+    type: string 
+    description: start of the IP pool for the external network
+    default: 192.168.122.151
+  provider_net_pool_end:
+    type: string
+    description: end of the IP pool for the external network
+    default: 192.168.122.200
+  tenant_net_name:
+    type: string
+    description: Name of the tenant network.
+    default: 'net1'
+  tenant_subnet_name:
+    type: string
+    description: Name of the tenant subnet.
+    default: 'subnet1'
+  tenant_router_name:
+    type: string
+    description: Name of the tenant router.
+    default: 'router1'
+  tenant_net_cidr:
+    type: string
+    description: CIDR for the tenant network
+    default: 192.168.1.0/24
+  tenant_net_gateway:
+    type: string
+    description: gateway for the tenant network
+    default: 192.168.1.254
+  tenant_net_name:
+    type: string
+    description: name for the tenant network
+    default: net1
+  tenant_net_pool_start:
+    type: string
+    description: network pool start. typically .11 of whatever /24 is defined
+    default: 192.168.1.10
+  tenant_net_pool_end:
+    type: string
+    description: network pool end. typically .200 of whatever /24 is defined
+    default: 192.168.1.100
+
+resources:
+  #glance_image_upload:
+  #  type: OS::Glance::Image
+  #  properties:
+  #    architecture: x86_64
+  #    container_format: bare
+  #    disk_format: qcow2
+  #    location: http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img
+  #    name: cirros-0.3.4-x86_64
+  #    os_distro: CirrOS
+  #    owner: admin
+  #    protected: False
+  #    is_public: True
+
+  instance_flavor:
+    type: OS::Nova::Flavor
+    properties:
+      ephemeral: 1
+      is_public: true
+      name: m1.tiny
+      ram: 512
+      vcpus: 1
+
+  provider_network:
+    type: OS::Neutron::ProviderNet
+    properties:
+      name: external
+      network_type: flat
+      physical_network: datacentre
+      router_external: True
+
+  provider_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id: { get_resource: provider_network }
+      cidr: { get_param: provider_net_cidr }
+      enable_dhcp: False
+      gateway_ip: { get_param: provider_net_gateway }
+      allocation_pools:
+        - start: { get_param: provider_net_pool_start }
+          end: { get_param: provider_net_pool_end }
+
+  openstack_project:
+    type: OS::Keystone::Project
+    properties:
+      name: { get_param: project_name }
+      domain: default
+      description: New project
+
+  openstack_user:
+    type: OS::Keystone::User
+    properties:
+      name: { get_param: project_user }
+      domain: default
+      description: User
+      default_project: { get_resource: openstack_project }
+      password: { get_param: project_user_passwd }
+      roles:
+        - role: { get_param: user_role}
+          project: { get_resource: openstack_project }
+
+  tenant_net:
+    type: OS::Neutron::Net
+    properties:
+      name: { get_param: tenant_net_name }
+      tenant_id: { get_resource: openstack_project }
+
+  tenant_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      name: { get_param: tenant_subnet_name }
+      network_id: { get_resource: tenant_net }
+      cidr: { get_param: tenant_net_cidr }
+      dns_nameservers: [ "192.168.122.1" ]
+      gateway_ip: { get_param: tenant_net_gateway }
+      allocation_pools:
+        - start: { get_param: tenant_net_pool_start }
+          end: { get_param: tenant_net_pool_end }
+      tenant_id: { get_resource: openstack_project }
+
+  tenant_router:
+    type: OS::Neutron::Router
+    properties:
+      name: { get_param: tenant_router_name }
+      external_gateway_info:
+        network: { get_resource: provider_network }
+
+  router_interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: tenant_router }
+      subnet_id: { get_resource: tenant_subnet }
