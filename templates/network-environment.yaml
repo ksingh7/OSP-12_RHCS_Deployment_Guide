@@ -33,6 +33,8 @@ parameter_defaults:
   # so that external networks act like provider bridge networks (they
   # will plug into br-int instead of br-ex)
   NeutronExternalNetworkBridge: "''"
+  NeutronBridgeMappings: "datacentre:br-ex,floating:br-floating"
+  NeutronFlatNetworks: "datacentre,floating"
 
   # Internal API used for private OpenStack Traffic
   InternalApiNetCidr: 172.17.1.0/24
@@ -55,12 +57,12 @@ parameter_defaults:
   StorageMgmtNetworkVlanID: 180
 
   # External Networking Access - Public API Access
-  ExternalNetCidr: 172.21.0.0/20
+  ExternalNetCidr: 172.21.1.0/20
   # Leave room for floating IPs in the External allocation pool (if required)
-  ExternalAllocationPools: [{'start': '172.21.0.161', 'end': '172.21.0.200'}]
+  ExternalAllocationPools: [{'start': '172.21.1.151', 'end': '172.21.1.159'}]
   # Set to the router gateway on the external network
   ExternalInterfaceDefaultRoute: 172.21.15.254
-  ExternalNetworkVlanID: 190
+  #ExternalNetworkVlanID: 190
 
   # Add in configuration for the Control Plane
   ControlPlaneSubnetCidr: "24"
@@ -69,4 +71,4 @@ parameter_defaults:
   DnsServers: ['172.21.0.1', '172.21.0.1']
 
   # Bonding options
-  BondInterfaceOvsOptions: 'mode=802.3ad'
+  BondInterfaceOvsOptions: 'mode=802.3ad miimon=100 updelay=100 downdelay=100'

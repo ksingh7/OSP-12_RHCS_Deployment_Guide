@@ -18,11 +18,11 @@ parameters:
   tenant_net_name:
     type: string
     description: name of the tenant network
-    default: net1
+    default: private_network
   tenant_subnet_name:
     type: string
     description: name of the tenant subnet
-    default: subnet1
+    default: private_subnet
   provider_net_cidr:
     type: string
     description: CIDR for the provider(external) network
@@ -59,7 +59,7 @@ resources:
     properties:
       name: { get_param: tenant_server1_name }
       image: cirros-0.3.4-x86_64
-      flavor: m1.tiny
+      flavor: tiny
       key_name:  { get_resource: tenant_key }
       networks:
         - port: { get_resource: server1_port }
@@ -104,7 +104,7 @@ resources:
     properties:
       name: { get_param: tenant_server2_name }
       image: cirros-0.3.4-x86_64
-      flavor: m1.tiny
+      flavor: tiny
       key_name:  { get_resource: tenant_key }
       networks:
         - port: { get_resource: server2_port }

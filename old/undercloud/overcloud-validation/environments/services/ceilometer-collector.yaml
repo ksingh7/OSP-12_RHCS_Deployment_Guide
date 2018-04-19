@@ -1,3 +1,0 @@
-resource_registry:
-  OS::TripleO::Services::CeilometerCollector: ../../docker/services/ceilometer-collector.yaml
-  OS::TripleO::Services::MongoDb: ../../docker/services/database/mongodb.yaml
