@@ -1,52 +1,45 @@
 heat_template_version: 2016-10-14
 
-description: This template will create an external network, upload an image, create a tenant and a user with a role to it, and create a tenant network and router.
+description: This template will create an external network, private network and a router
 
 parameters:
-  project_name:
+  provider_net_name:
     type: string
-    description: Project name that will be created it.
-    default: 'tenant1'
-  user_role:
+    description: Name of the tenant network.
+    default: 'external_network1'
+  provider_subnet_name:
     type: string
-    description: User role to be assigned.
-    default: 'ResellerAdmin'
-  project_user:
-    type: string
-    description: User to be created inside the project.
-    default: 'user1'
-  project_user_passwd:
-    type: string
-    description: Password for the project defined user
-    default: 'redhat'
+    description: Name of the tenant subnet.
+    default: 'external_network_subnet1'
   provider_net_cidr:
     type: string
     description: CIDR for the provider(external) network
-    default: 172.21.0.0/24
+    default: 172.21.0.0/20
   provider_net_gateway:
     type: string
     description: GW for the external network
     default: 172.21.15.254
   provider_net_pool_start:
-    type: string 
+    type: string
     description: start of the IP pool for the external network
-    default: 172.21.0.10
+    default: 172.21.1.175
   provider_net_pool_end:
     type: string
     description: end of the IP pool for the external network
-    default: 172.21.0.159
+    default: 172.21.1.200
+ 
   tenant_net_name:
     type: string
     description: Name of the tenant network.
-    default: 'net1'
+    default: 'private_network1'
   tenant_subnet_name:
     type: string
     description: Name of the tenant subnet.
-    default: 'subnet1'
+    default: 'private_network_subnet1'
   tenant_router_name:
     type: string
     description: Name of the tenant router.
-    default: 'router1'
+    default: 'private_network_router1'
   tenant_net_cidr:
     type: string
     description: CIDR for the tenant network
@@ -55,10 +48,6 @@ parameters:
     type: string
     description: gateway for the tenant network
     default: 192.168.1.254
-  tenant_net_name:
-    type: string
-    description: name for the tenant network
-    default: net1
   tenant_net_pool_start:
     type: string
     description: network pool start. typically .11 of whatever /24 is defined
@@ -68,72 +57,55 @@ parameters:
     description: network pool end. typically .200 of whatever /24 is defined
     default: 192.168.1.100
 
+  tenant_key_name:
+    type: string
+    description: ssh key required for server creation
+    default: 'admin-ssh-keypair'
+  tenant_server1_name:
+    type: string
+    description: name of the instance
+    default: 'instance1'
+  tenant_security_group:
+    type: string
+    description: name of the security group
+    default: 'tenant_sg1'  
+
 resources:
-  #glance_image_upload:
-  #  type: OS::Glance::Image
-  #  properties:
-  #    architecture: x86_64
-  #    container_format: bare
-  #    disk_format: qcow2
-  #    location: http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img
-  #    name: cirros-0.3.4-x86_64
-  #    os_distro: CirrOS
-  #    owner: admin
-  #    protected: False
-  #    is_public: True
 
   instance_flavor:
     type: OS::Nova::Flavor
     properties:
-      ephemeral: 1
       is_public: true
       name: m1.tiny
-      ram: 512
+      ram: 1024
       vcpus: 1
+      disk: 10
 
   provider_network:
     type: OS::Neutron::ProviderNet
     properties:
-      name: external
+      name: { get_param: provider_net_name }
       network_type: flat
-      physical_network: datacentre
+      physical_network: floating
       router_external: True
 
   provider_subnet:
     type: OS::Neutron::Subnet
     properties:
+      name: { get_param: provider_subnet_name }
       network_id: { get_resource: provider_network }
       cidr: { get_param: provider_net_cidr }
       enable_dhcp: False
       gateway_ip: { get_param: provider_net_gateway }
+      dns_nameservers: [ "8.8.8.8" ]
       allocation_pools:
         - start: { get_param: provider_net_pool_start }
           end: { get_param: provider_net_pool_end }
-
-  openstack_project:
-    type: OS::Keystone::Project
-    properties:
-      name: { get_param: project_name }
-      domain: default
-      description: New project
-
-  openstack_user:
-    type: OS::Keystone::User
-    properties:
-      name: { get_param: project_user }
-      domain: default
-      description: User
-      default_project: { get_resource: openstack_project }
-      password: { get_param: project_user_passwd }
-      roles:
-        - role: { get_param: user_role}
-          project: { get_resource: openstack_project }
 
   tenant_net:
     type: OS::Neutron::Net
     properties:
       name: { get_param: tenant_net_name }
-      tenant_id: { get_resource: openstack_project }
 
   tenant_subnet:
     type: OS::Neutron::Subnet
@@ -141,12 +113,10 @@ resources:
       name: { get_param: tenant_subnet_name }
       network_id: { get_resource: tenant_net }
       cidr: { get_param: tenant_net_cidr }
-      dns_nameservers: [ "192.168.122.1" ]
       gateway_ip: { get_param: tenant_net_gateway }
       allocation_pools:
         - start: { get_param: tenant_net_pool_start }
           end: { get_param: tenant_net_pool_end }
-      tenant_id: { get_resource: openstack_project }
 
   tenant_router:
     type: OS::Neutron::Router
@@ -160,3 +130,62 @@ resources:
     properties:
       router_id: { get_resource: tenant_router }
       subnet_id: { get_resource: tenant_subnet }
+
+  security_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: { get_param: tenant_security_group }
+      description: Ping, SSH and all TCP
+      rules:
+       - protocol: icmp
+       - protocol: tcp
+         port_range_min: 22
+         port_range_max: 22
+       - protocol: tcp
+         port_range_min: 1
+         port_range_max: 65535
+
+  tenant_key:
+    type: OS::Nova::KeyPair
+    properties:
+      name: { get_param: tenant_key_name }
+      save_private_key: True    
+
+  server1:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: tenant_server1_name }
+      image: cirros-0.4.0-x86_64
+      flavor: { get_resource: instance_flavor }
+      key_name:  { get_resource: tenant_key }
+      networks:
+        - port: { get_resource: server1_port }
+
+  server1_port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: tenant_net }
+      fixed_ips:
+        - subnet: { get_resource: tenant_subnet }
+      security_groups: 
+        - { get_resource: security_group }
+
+  server1_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_resource: provider_network }
+      port_id: { get_resource: server1_port }
+
+  server1_volume:
+    type: OS::Cinder::Volume
+    properties:
+      name: "test_volume"
+      description: "Test Volume"
+      size: 10
+
+  server1_volume_attach:
+    type: OS::Cinder::VolumeAttachment
+    properties:
+      volume_id: { get_resource: server1_volume }
+      instance_uuid: { get_resource: server1 }      
+
