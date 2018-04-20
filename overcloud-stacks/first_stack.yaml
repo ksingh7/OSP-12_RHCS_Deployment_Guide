@@ -145,11 +145,11 @@ resources:
          port_range_min: 1
          port_range_max: 65535
 
-  tenant_key:
-    type: OS::Nova::KeyPair
-    properties:
-      name: { get_param: tenant_key_name }
-      save_private_key: True    
+#  tenant_key:
+#    type: OS::Nova::KeyPair
+#    properties:
+#      name: { get_param: tenant_key_name }
+#      save_private_key: False
 
   server1:
     type: OS::Nova::Server
@@ -157,7 +157,7 @@ resources:
       name: { get_param: tenant_server1_name }
       image: cirros-0.4.0-x86_64
       flavor: { get_resource: instance_flavor }
-      key_name:  { get_resource: tenant_key }
+      key_name:  { get_param: tenant_key_name }
       networks:
         - port: { get_resource: server1_port }
 
