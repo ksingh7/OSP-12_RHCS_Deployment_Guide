@@ -1,0 +1,35 @@
+---
+
+- name: Ensure ~/.ssh directory exists
+  file:
+    path: "{{ ssh_user_homedir }}/.ssh"
+    state: directory
+    owner: "{{ ssh_user }}"
+    group: "{{ ssh_user }}"
+    mode: 0700
+
+- name: Install SSH Private Key
+  copy:
+    owner: "{{ ssh_user }}"
+    group: "{{ ssh_user }}"
+    dest: "{{ ssh_user_homedir }}/.ssh/id_rsa"
+    mode: 0600
+    content: "{{ key_private }}"
+
+- name: Install SSH Public Key
+  copy:
+    owner: "{{ ssh_user }}"
+    group: "{{ ssh_user }}"
+    dest: "{{ ssh_user_homedir }}/.ssh/id_rsa.pub"
+    mode: 0600
+    content: "{{ key_public }}"
+
+- name: Add SSH Public Key to authorized_hosts
+  copy:
+    owner: "{{ ssh_user }}"
+    group: "{{ ssh_user }}"
+    dest: "{{ ssh_user_homedir }}/.ssh/authorized_keys"
+    mode: 0600
+    content: "{{ key_public }}"
+
+#- include: ssh_setup.yaml

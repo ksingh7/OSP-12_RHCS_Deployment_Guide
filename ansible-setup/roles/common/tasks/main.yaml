@@ -1,0 +1,23 @@
+---
+- name: Configure resolv.conf
+  template:
+    src: resolv.conf
+    dest: /etc/resolv.conf
+    mode: 0644
+
+- name: Configure /etc/hosts
+  template:
+    src: hosts
+    dest: /etc/hosts
+    mode: 0644
+
+- name: Set authorized key
+  authorized_key:
+    user: cloud-user
+    key: '{{ item }}'
+    state: present
+  with_file:
+    - templates/ssh-keys
+
+- include: epel.yaml
+  when: install_epel

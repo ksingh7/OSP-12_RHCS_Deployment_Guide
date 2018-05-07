@@ -1,0 +1,56 @@
+---
+## Common ##
+
+ansible_check_mode: true
+install_epel: true
+
+## SSH ##
+ssh_user: root
+ssh_user_homedir: /root
+key_private: |
+  -----BEGIN RSA PRIVATE KEY-----
+  MIIEpQIBAAKCAQEAwfFmBN2t0hFrYW8MDBsj5UeDNHpR7PsgDdKcX2GkkWqvivQS
+  z4zmWp5ClrvlMn9woJEXV5BzpJ2com/RzqQUlNzgs183LGqje+mwEw5Udvo/6HaT
+  dpavWFl7G1DeBQloWU27XcUEiYt7PhaBEelhDolzp2z5AfH05x+LObOpP6P/oO9i
+  b+pgcrztWRP75synLd1dZBaIx32MH7A6K99/JD4J2VX3BB+f8ScBsYZaxi8y3Ach
+  Vf5hOfHPWJVlOxwUIRndv6GfxjZ1olSr++Y8tDDMpNluG6kAgo6c6VjeEIhvB+uV
+  TcHmImcuMI6ZGfd/QqLdXdHLQJGIIcvA9mEg9wIDAQABAoIBAQCnL2CBi1NfBjMp
+  799TxEWiTY5WO6fKAQU1xTuVoYeK74vZ3eMlVdHxhgHjDKBccq11TP3xNw3pdxDi
+  mkAjwSAY33s4RTk7qcW6eM2W78ByO/HBhA5EqUsIf0J3XrO1ZdG1QiPlhoQNydZ4
+  xE+JUEShkm3Hg1H4kkpKvs9282BQAZ4BJR68YL4KlyNeOlTmgKiUvcUtZnuxLgid
+  1vxn2ukU61p6vTKcwOc19pK0dmp0DnLutAhcdRP2c7uqYKLnNecYx3se9+yJFD1C
+  SD0uUbibeVNTTIqrBdbINBfeqIY/9JEmDFqdMaHMJikT0CfKLdVi++y4RqZZggnM
+  OdZ5ELEJAoGBAPpgP1vLePid2hm9oYwdOYu90y907u+rowan9A+Zvxilqe6On8I2
+  h1LNGu0Sbp0kiudP+2u7kUt3hvZouUT3bHoxOcBOEDNVpIgT2QZStv8Mlax7bOmz
+  UGXfM8dn1FMdk5lqNzZMenCkdnFP9PTMkyHSkPbbpqlLD1GMKBv1DWU9AoGBAMZM
+  pAuoBUaqOhQRorxrENWVr1ER2AkpgyzuBPBl0mbwdYXGMXLxKx0N8bIkFDc5Y44v
+  TDe9+QaJQWX9NBHWUnUgJUOlRn66dII81+9+GJyKcmYHOxItm67Q7WtKqL1j3+GC
+  ExLnEYyaW1ivKpWKx8DrnvfNxv7ZZhXpgMbozEpDAoGBAL/d7e+8V3G+FZrQNPIY
+  mza5OxMM+uVzlDTPlDo4SbbrjPOhHFBKVR1gzBeMnnORw1hLdJI0ZL1+VVCTJBbz
+  vI9PFcCGkeek47bb7t3nmRCOZkyNMQNORHgsuZM/v/gJnEhemvzjUpjrj1B6Q28t
+  LjsnD6v82xS0zoJhc4MpISDJAoGABSAqBVscd80iny4thK1HzB2IYJITgXkfOOQW
+  IJihLaP9ha2vzYbKVH/txWsFUsAbAKvcTnyMmUym8hnvZJ6jlv9ztyHohpIPPOaR
+  tlEOFc3GUzjQoBGpuoUP/fv6DJsuSEfyckSiwX2j6tDsSt1BeI0emM0q3Z+E8gAN
+  IhcWYL0CgYEAi5zppC8EFrN7pu0OCACqzbzQqrE30ON9TR+U1RkLu0e7OmTdX81F
+  gN01Z17ul0w0gyb9VF4soXiwquRy8Pq1ZsWV0P4wjaG6AuqKb1AfAsD6zjy+vnXA
+  h6Nu7eeKuyhZ3sFtZfOOBtPJdbr8T/kzjQnMmdb56T8Y6vzzE0V3TyQ=
+  -----END RSA PRIVATE KEY-----
+key_public: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDB8WYE3a3SEWthbwwMGyPlR4M0elHs+yAN0pxfYaSRaq+K9BLPjOZankKWu+Uyf3CgkRdXkHOknZyib9HOpBSU3OCzXzcsaqN76bATDlR2+j/odpN2lq9YWXsbUN4FCWhZTbtdxQSJi3s+FoER6WEOiXOnbPkB8fTnH4s5s6k/o/+g72Jv6mByvO1ZE/vmzKct3V1kFojHfYwfsDor338kPgnZVfcEH5/xJwGxhlrGLzLcByFV/mE58c9YlWU7HBQhGd2/oZ/GNnWiVKv75jy0MMyk2W4bqQCCjpzpWN4QiG8H65VNweYiZy4wjpkZ939Cot1d0ctAkYghy8D2YSD3 root@server1"
+
+## Block Device ##
+
+block_dev_name: /dev/vdb
+mount_point: /var/lib/mysql
+force: "yes"
+
+## Subscription Manager ##
+
+rhsm_org_id: "6340056"
+rhsm_act_key: "RHCS-test-drive-subscription-activation-key-1"
+pool_id: "8a85f98260c27fc50160c328c08a5045"
+rhsm_repos:
+  - rhel-7-server-rpms
+  - rhel-7-server-extras-rpms
+  - rhel-7-server-optional-rpms
+  - rhel-server-rhscl-7-eus-rpms 
+

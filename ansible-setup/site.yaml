@@ -1,0 +1,23 @@
+---
+#- hosts: instances
+#  sudo: true
+#  roles:
+#  - { role: common, tags: common }
+
+#- hosts: instances
+#  sudo: true
+#  gather_facts: no
+#  roles:
+#  - { role: filesystem, tags: filesystem }
+#  - { role: subscription-manager, tags: subscription }
+#  - { role: ssh-keypair, tags: ssh }
+
+#- hosts: instances
+#  sudo: true
+#  roles:
+#  - { role: pbench, tags: pbench }
+
+- hosts: instances
+  sudo: true
+  roles:
+  - { role: ansible-role-mysql , tags: mysql }

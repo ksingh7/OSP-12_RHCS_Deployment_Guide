@@ -1,0 +1,54 @@
+---
+
+- name: Set StrictHostKeyChecking NO for sshd
+  lineinfile:
+    path: /etc/ssh/ssh_config
+    state: present
+    regexp: '^StrictHostKeyChecking'
+    insertafter: '^#   StrictHostKeyChecking ask'
+    line: 'StrictHostKeyChecking no'
+
+- name: Increase ClientAliveInterval
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    state: present
+    regexp: '#ClientAliveInterval'
+    insertafter: '#ClientAliveInterval'
+    line: 'ClientAliveInterval 600'
+
+- name: Increase ClientAliveCountMax
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    state: present
+    regexp: '#ClientAliveCountMax 3'
+    line: 'ClientAliveCountMax 3'
+
+- name: disable reverse DNS lookup for sshd
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^UseDNS "
+    line: "UseDNS no"
+
+- name: Enable password authentication
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^PasswordAuthentication yes"
+    line: "PasswordAuthentication no"
+
+- name: Permit Root Login
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "#PermitRootLogin"
+    insertafter: "#PermitRootLogin"
+    line: "PermitRootLogin yes"
+
+- name: disable GSSAPIAuthentication for sshd
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^GSSAPIAuthentication "
+    line: "GSSAPIAuthentication no"
+
+- name: Restart sshd
+  service:
+    name: sshd
+    state: restarted

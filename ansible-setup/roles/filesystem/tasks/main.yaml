@@ -1,0 +1,14 @@
+---
+- name: Create filesystem
+  filesystem:
+    fstype: xfs
+    dev: "{{ block_dev_name }}"
+    force: "{{ force }}"
+
+- name: Mount Device
+  mount:
+    path: "{{ mount_point }}"
+    src: "{{ block_dev_name }}"
+    fstype: xfs
+    fstab: /etc/fstab 
+    state: mounted
