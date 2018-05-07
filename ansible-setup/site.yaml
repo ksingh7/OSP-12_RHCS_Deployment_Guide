@@ -20,4 +20,4 @@
 - hosts: instances
   sudo: true
   roles:
-  - { role: ansible-role-mysql , tags: mysql }
+  - { role: mysql , tags: mysql }
