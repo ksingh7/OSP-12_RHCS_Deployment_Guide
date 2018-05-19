@@ -1,0 +1,17 @@
+---
+- name: registering system with CDN
+  redhat_subscription:
+    org_id: "{{ rhsm_org_id }}"
+    activationkey: "{{ rhsm_act_key }}"
+    state: present
+    autosubscribe: true
+    force_register: true
+    pool_ids: "{{ pool_id }}"
+
+- name: disable all default repositories
+  shell: subscription-manager repos --disable="*"
+
+- name: enable all required repositories
+  shell: subscription-manager repos --enable {{ rhsm_repos | join(" --enable ") }}
+
+...

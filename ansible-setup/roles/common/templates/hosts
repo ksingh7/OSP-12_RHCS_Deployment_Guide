@@ -1,0 +1,14 @@
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+192.168.1.23  admin
+192.168.1.16  server1
+192.168.1.15  server2
+192.168.1.30  server3
+192.168.1.35  server4
+192.168.1.22  server5
+192.168.1.24  server6
+192.168.1.27  server7
+192.168.1.18  server8
+192.168.1.26  server9
+192.168.1.29  server10
+192.168.1.32  server11

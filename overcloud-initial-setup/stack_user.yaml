@@ -1,0 +1,130 @@
+heat_template_version: 2016-10-14
+
+description: This template will create two servers and assign  a floating IP address to each of them.
+
+parameters:
+  tenant_key_name:
+    type: string
+    description: ssh key required for server creation
+    default: 'stack'
+  tenant_server1_name:
+    type: string
+    description: name of the instance
+    default: 'vm1'
+  tenant_server2_name:
+    type: string
+    description: name of the instance
+    default: 'vm2'
+  tenant_net_name:
+    type: string
+    description: name of the tenant network
+    default: net1
+  tenant_subnet_name:
+    type: string
+    description: name of the tenant subnet
+    default: subnet1
+  provider_net_cidr:
+    type: string
+    description: CIDR for the provider(external) network
+    default: 192.168.122.0/24
+  provider_network:
+    type: string
+    description: Name of the provider network.
+    default: external
+
+resources:
+
+  security_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: tenant_sg
+      description: Ping and SSH
+      rules:
+      - protocol: icmp
+      - protocol: tcp
+        port_range_min: 22
+        port_range_max: 22
+      - protocol: tcp
+        port_range_min: 5000
+        port_range_max: 5000
+
+  tenant_key:
+    type: OS::Nova::KeyPair
+    properties:
+      name: { get_param: tenant_key_name }
+      save_private_key: false
+
+  server1:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: tenant_server1_name }
+      image: cirros-0.3.4-x86_64
+      flavor: m1.tiny
+      key_name:  { get_resource: tenant_key }
+      networks:
+        - port: { get_resource: server1_port }
+
+  server1_port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param: tenant_net_name }
+      fixed_ips:
+        - subnet: { get_param: tenant_subnet_name }
+      security_groups: [get_resource: security_group]
+
+  server1_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: provider_network }
+      port_id: { get_resource: server1_port }
+
+  server1_volume:
+    type: OS::Cinder::Volume
+    properties:
+      name: "test_volume"
+      description: "Test Volume"
+      size: 10
+
+  server1_volume_attach:
+    type: OS::Cinder::VolumeAttachment
+    properties:
+      volume_id: { get_resource: server1_volume }
+      instance_uuid: { get_resource: server1 }
+
+  server2_bootable_volume:
+    type: OS::Cinder::Volume
+    properties:
+      name: server2_boot_volume
+      description: "Server 2 boot volume"
+      size: 10
+      image: cirros-0.3.4-x86_64
+
+  server2:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: tenant_server2_name }
+      image: cirros-0.3.4-x86_64
+      flavor: m1.tiny
+      key_name:  { get_resource: tenant_key }
+      networks:
+        - port: { get_resource: server2_port }
+      block_device_mapping:
+        - device_name: vda
+          volume_id: { get_resource: server2_bootable_volume }
+          delete_on_termination: true
+
+  server2_port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param: tenant_net_name }
+      fixed_ips:
+        - subnet: { get_param: tenant_subnet_name }
+      security_groups: [get_resource: security_group]
+
+  server2_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: provider_network }
+      port_id: { get_resource: server2_port }
+
+
