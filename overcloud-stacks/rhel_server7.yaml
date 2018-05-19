@@ -24,29 +24,29 @@ parameters:
     description: name of the security group
     default: 'tenant_sg1' 
 
-  tenant_server4_name:
+  tenant_server7_name:
     type: string
     description: name of the instance
-    default: 'server4'
+    default: 'server7'
 
   instance_flavor:
     type: string
     description: name of the instance flavor
-    default: 'm1.small'
+    default: 'm1.medium'
 
 resources:
 
-  server4:
+  server7:
     type: OS::Nova::Server
     properties:
-      name: { get_param: tenant_server4_name }
+      name: { get_param: tenant_server7_name }
       image: rhel-server-7.5-x86_64-kvm
       flavor: { get_param: instance_flavor }
       key_name:  { get_param: tenant_key_name }
       networks:
-        - port: { get_resource: server4_port }
+        - port: { get_resource: server7_port }
 
-  server4_port:
+  server7_port:
     type: OS::Neutron::Port
     properties:
       network: { get_param: tenant_net_name }
@@ -55,22 +55,22 @@ resources:
       security_groups: 
         - { get_param: tenant_security_group }
 
-  server4_floating_ip:
+  server7_floating_ip:
     type: OS::Neutron::FloatingIP
     properties:
       floating_network: { get_param: provider_net_name }
-      port_id: { get_resource: server4_port }
+      port_id: { get_resource: server7_port }
 
-  server4_volume:
+  server7_volume:
     type: OS::Cinder::Volume
     properties:
-      name: "server4-volume1"
+      name: "server7-volume1"
       description: "volume1"
       size: 100
 
-  server4_volume_attach:
+  server7_volume_attach:
     type: OS::Cinder::VolumeAttachment
     properties:
-      volume_id: { get_resource: server4_volume }
-      instance_uuid: { get_resource: server4 }      
+      volume_id: { get_resource: server7_volume }
+      instance_uuid: { get_resource: server7 }      
 

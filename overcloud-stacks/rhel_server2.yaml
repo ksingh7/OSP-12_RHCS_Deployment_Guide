@@ -32,7 +32,7 @@ parameters:
   instance_flavor:
     type: string
     description: name of the instance flavor
-    default: 'm1.small'
+    default: 'm1.medium'
 
 resources:
 
