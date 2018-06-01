@@ -1,0 +1,3 @@
+---
+container_images:
+- imagename: registry.access.redhat.com/rhosp12/openstack-redis:latest
