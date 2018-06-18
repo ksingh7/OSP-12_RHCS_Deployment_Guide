@@ -4,11 +4,20 @@ description: This template will create flavors
 
 resources:
 
+#  instance_flavor:
+#    type: OS::Nova::Flavor
+#    properties:
+#      is_public: true
+#      name: m1.small
+#      ram: 2048
+#      vcpus: 2
+#      disk: 20
+
   instance_flavor:
     type: OS::Nova::Flavor
     properties:
       is_public: true
-      name: m1.small
-      ram: 2048
-      vcpus: 2
-      disk: 20
+      name: m1.medium
+      ram: 8192
+      vcpus: 4
+      disk: 40

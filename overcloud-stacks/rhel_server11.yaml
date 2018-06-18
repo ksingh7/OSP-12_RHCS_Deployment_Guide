@@ -1,0 +1,76 @@
+heat_template_version: 2016-10-14
+
+description: This template will create an external network, private network and a router
+
+parameters:
+  provider_net_name:
+    type: string
+    description: Name of the tenant network.
+    default: 'external_network1' 
+  tenant_net_name:
+    type: string
+    description: Name of the tenant network.
+    default: 'private_network1'
+  tenant_subnet_name:
+    type: string
+    description: Name of the tenant subnet.
+    default: 'private_network_subnet1'
+  tenant_key_name:
+    type: string
+    description: ssh key required for server creation
+    default: 'admin-ssh-keypair'
+  tenant_security_group:
+    type: string
+    description: name of the security group
+    default: 'tenant_sg1' 
+
+  tenant_server11_name:
+    type: string
+    description: name of the instance
+    default: 'server11'
+
+  instance_flavor:
+    type: string
+    description: name of the instance flavor
+    default: 'm1.medium'
+
+resources:
+
+  server11:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: tenant_server11_name }
+      image: rhel-server-7.5-x86_64-kvm
+      flavor: { get_param: instance_flavor }
+      key_name:  { get_param: tenant_key_name }
+      networks:
+        - port: { get_resource: server11_port }
+
+  server11_port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param: tenant_net_name }
+      fixed_ips:
+        - subnet: { get_param: tenant_subnet_name }
+      security_groups: 
+        - { get_param: tenant_security_group }
+
+  server11_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: provider_net_name }
+      port_id: { get_resource: server11_port }
+
+  server11_volume:
+    type: OS::Cinder::Volume
+    properties:
+      name: "server11-volume1"
+      description: "volume1"
+      size: 100
+
+  server11_volume_attach:
+    type: OS::Cinder::VolumeAttachment
+    properties:
+      volume_id: { get_resource: server11_volume }
+      instance_uuid: { get_resource: server11 }      
+

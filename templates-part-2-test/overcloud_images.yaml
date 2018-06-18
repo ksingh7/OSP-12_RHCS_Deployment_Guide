@@ -1,0 +1,70 @@
+# Generated with the following on 2018-05-24T09:26:47.911409
+#
+#   openstack overcloud container image prepare --namespace=192.168.120.1:8787/rhosp12 --prefix=openstack- --tag=12.0-20180519.1 -e /usr/share/openstack-tripleo-heat-templates/environments/ceph-ansible/ceph-ansible.yaml --set ceph_namespace=192.168.120.1:8787/rhceph --set ceph_image=rhceph-3-rhel7 --output-env-file=/home/stack/templates/overcloud_images.yaml
+#
+
+parameter_defaults:
+  DockerAodhApiImage: 192.168.120.1:8787/rhosp12/openstack-aodh-api:12.0-20180519.1
+  DockerAodhConfigImage: 192.168.120.1:8787/rhosp12/openstack-aodh-api:12.0-20180519.1
+  DockerAodhEvaluatorImage: 192.168.120.1:8787/rhosp12/openstack-aodh-evaluator:12.0-20180519.1
+  DockerAodhListenerImage: 192.168.120.1:8787/rhosp12/openstack-aodh-listener:12.0-20180519.1
+  DockerAodhNotifierImage: 192.168.120.1:8787/rhosp12/openstack-aodh-notifier:12.0-20180519.1
+  DockerCeilometerCentralImage: 192.168.120.1:8787/rhosp12/openstack-ceilometer-central:12.0-20180519.1
+  DockerCeilometerComputeImage: 192.168.120.1:8787/rhosp12/openstack-ceilometer-compute:12.0-20180519.1
+  DockerCeilometerConfigImage: 192.168.120.1:8787/rhosp12/openstack-ceilometer-central:12.0-20180519.1
+  DockerCeilometerNotificationImage: 192.168.120.1:8787/rhosp12/openstack-ceilometer-notification:12.0-20180519.1
+  DockerCephDaemonImage: 192.168.120.1:8787/rhceph/rhceph-3-rhel7:latest
+  DockerClustercheckConfigImage: 192.168.120.1:8787/rhosp12/openstack-mariadb:12.0-20180519.1
+  DockerClustercheckImage: 192.168.120.1:8787/rhosp12/openstack-mariadb:12.0-20180519.1
+  DockerCrondConfigImage: 192.168.120.1:8787/rhosp12/openstack-cron:12.0-20180519.1
+  DockerCrondImage: 192.168.120.1:8787/rhosp12/openstack-cron:12.0-20180519.1
+  DockerGlanceApiConfigImage: 192.168.120.1:8787/rhosp12/openstack-glance-api:12.0-20180519.1
+  DockerGlanceApiImage: 192.168.120.1:8787/rhosp12/openstack-glance-api:12.0-20180519.1
+  DockerGnocchiApiImage: 192.168.120.1:8787/rhosp12/openstack-gnocchi-api:12.0-20180519.1
+  DockerGnocchiConfigImage: 192.168.120.1:8787/rhosp12/openstack-gnocchi-api:12.0-20180519.1
+  DockerGnocchiMetricdImage: 192.168.120.1:8787/rhosp12/openstack-gnocchi-metricd:12.0-20180519.1
+  DockerGnocchiStatsdImage: 192.168.120.1:8787/rhosp12/openstack-gnocchi-statsd:12.0-20180519.1
+  DockerHAProxyConfigImage: 192.168.120.1:8787/rhosp12/openstack-haproxy:12.0-20180519.1
+  DockerHAProxyImage: 192.168.120.1:8787/rhosp12/openstack-haproxy:12.0-20180519.1
+  DockerHeatApiCfnConfigImage: 192.168.120.1:8787/rhosp12/openstack-heat-api-cfn:12.0-20180519.1
+  DockerHeatApiCfnImage: 192.168.120.1:8787/rhosp12/openstack-heat-api-cfn:12.0-20180519.1
+  DockerHeatApiConfigImage: 192.168.120.1:8787/rhosp12/openstack-heat-api:12.0-20180519.1
+  DockerHeatApiImage: 192.168.120.1:8787/rhosp12/openstack-heat-api:12.0-20180519.1
+  DockerHeatConfigImage: 192.168.120.1:8787/rhosp12/openstack-heat-api:12.0-20180519.1
+  DockerHeatEngineImage: 192.168.120.1:8787/rhosp12/openstack-heat-engine:12.0-20180519.1
+  DockerHorizonConfigImage: 192.168.120.1:8787/rhosp12/openstack-horizon:12.0-20180519.1
+  DockerHorizonImage: 192.168.120.1:8787/rhosp12/openstack-horizon:12.0-20180519.1
+  DockerInsecureRegistryAddress:
+  - 192.168.120.1:8787
+  DockerKeystoneConfigImage: 192.168.120.1:8787/rhosp12/openstack-keystone:12.0-20180519.1
+  DockerKeystoneImage: 192.168.120.1:8787/rhosp12/openstack-keystone:12.0-20180519.1
+  DockerMemcachedConfigImage: 192.168.120.1:8787/rhosp12/openstack-memcached:12.0-20180519.1
+  DockerMemcachedImage: 192.168.120.1:8787/rhosp12/openstack-memcached:12.0-20180519.1
+  DockerMysqlClientConfigImage: 192.168.120.1:8787/rhosp12/openstack-mariadb:12.0-20180519.1
+  DockerMysqlConfigImage: 192.168.120.1:8787/rhosp12/openstack-mariadb:12.0-20180519.1
+  DockerMysqlImage: 192.168.120.1:8787/rhosp12/openstack-mariadb:12.0-20180519.1
+  DockerNovaApiImage: 192.168.120.1:8787/rhosp12/openstack-nova-api:12.0-20180519.1
+  DockerNovaComputeImage: 192.168.120.1:8787/rhosp12/openstack-nova-compute:12.0-20180519.1
+  DockerNovaConductorImage: 192.168.120.1:8787/rhosp12/openstack-nova-conductor:12.0-20180519.1
+  DockerNovaConfigImage: 192.168.120.1:8787/rhosp12/openstack-nova-api:12.0-20180519.1
+  DockerNovaConsoleauthImage: 192.168.120.1:8787/rhosp12/openstack-nova-consoleauth:12.0-20180519.1
+  DockerNovaLibvirtConfigImage: 192.168.120.1:8787/rhosp12/openstack-nova-compute:12.0-20180519.1
+  DockerNovaLibvirtImage: 192.168.120.1:8787/rhosp12/openstack-nova-libvirt:12.0-20180519.1
+  DockerNovaMetadataImage: 192.168.120.1:8787/rhosp12/openstack-nova-api:12.0-20180519.1
+  DockerNovaPlacementConfigImage: 192.168.120.1:8787/rhosp12/openstack-nova-placement-api:12.0-20180519.1
+  DockerNovaPlacementImage: 192.168.120.1:8787/rhosp12/openstack-nova-placement-api:12.0-20180519.1
+  DockerNovaSchedulerImage: 192.168.120.1:8787/rhosp12/openstack-nova-scheduler:12.0-20180519.1
+  DockerNovaVncProxyImage: 192.168.120.1:8787/rhosp12/openstack-nova-novncproxy:12.0-20180519.1
+  DockerPankoApiImage: 192.168.120.1:8787/rhosp12/openstack-panko-api:12.0-20180519.1
+  DockerPankoConfigImage: 192.168.120.1:8787/rhosp12/openstack-panko-api:12.0-20180519.1
+  DockerRabbitmqConfigImage: 192.168.120.1:8787/rhosp12/openstack-rabbitmq:12.0-20180519.1
+  DockerRabbitmqImage: 192.168.120.1:8787/rhosp12/openstack-rabbitmq:12.0-20180519.1
+  DockerRedisConfigImage: 192.168.120.1:8787/rhosp12/openstack-redis:12.0-20180519.1
+  DockerRedisImage: 192.168.120.1:8787/rhosp12/openstack-redis:12.0-20180519.1
+  DockerSwiftAccountImage: 192.168.120.1:8787/rhosp12/openstack-swift-account:12.0-20180519.1
+  DockerSwiftConfigImage: 192.168.120.1:8787/rhosp12/openstack-swift-proxy-server:12.0-20180519.1
+  DockerSwiftContainerImage: 192.168.120.1:8787/rhosp12/openstack-swift-container:12.0-20180519.1
+  DockerSwiftObjectImage: 192.168.120.1:8787/rhosp12/openstack-swift-object:12.0-20180519.1
+  DockerSwiftProxyImage: 192.168.120.1:8787/rhosp12/openstack-swift-proxy-server:12.0-20180519.1
+  DockerCephDaemonImage: 192.168.120.1:8787/rhceph/rhceph-3-rhel7:latest
+
