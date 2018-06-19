@@ -30,8 +30,6 @@ parameter_defaults:
       - /dev/nvme0n1
       - /dev/nvme0n1
                               
-    journal_size: 10240
-
   CephPoolDefaultPgNum: 32
 
   CephAnsibleExtraConfig:
@@ -44,6 +42,7 @@ parameter_defaults:
     osd_journal_size: 10240
     mon_osd_full_ratio: 90
     max_open_files: 131072
+    osd_objectstore: bluestore
 
   ControllerExtraConfig:
     tripleo::firewall::firewall_rules:
@@ -60,5 +59,12 @@ parameter_defaults:
   CephAnsiblePlaybookVerbosity: 1
 
   CephConfigOverrides:
-    mon_osd_full_ratio: 90
-    max_open_files: 131072
+    global:
+      enable experimental unrecoverable data corrupting features: 'bluestore rocksdb'
+      bluestore fsck on mount: true
+      bluestore block db size: 67108864
+      bluestore block wal size: 134217728
+      bluestore block size: 5368709120
+      mon_osd_full_ratio: 90
+      max_open_files: 131072
+

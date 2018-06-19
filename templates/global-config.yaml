@@ -1,31 +1,42 @@
 parameter_defaults:
   NodeRootPassword: refarch123 
   Debug: true
+  DockerPuppetDebug: True
 
   NovaReservedHostMemory: 1024
 
   ControllerCount: 1
-  OvercloudControllerFlavor: control
+  OvercloudControllerFlavor: Controller
 
   R220ComputeCount: 4
 #  OvercloudComputeFlavor: R220compute
-  OvercloudR220ComputeFlavor: R220compute
+  OvercloudR220ComputeFlavor: R220Compute
 
   R630ComputeCount: 2
 #  OvercloudComputeFlavor: R630compute
-  OvercloudR630ComputeFlavor: R630compute
+  OvercloudR630ComputeFlavor: R630Compute
 
   CephStorageCount: 5
-  OvercloudCephStorageFlavor: ceph-storage
+  OvercloudCephStorageFlavor: CephStorage
 
-  ControllerSchedulerHints:
-    'capabilities:node': 'controller-%index%'
-  CephStorageSchedulerHints:
-    'capabilities:node': 'cephstorage-%index%'
-  R630ComputeSchedulerHints:
-    'capabilities:node': 'compute-r630-%index%'
-  R220ComputeSchedulerHints:
-    'capabilities:node': 'compute-r220-%index%'
+#  ControllerSchedulerHints:
+#    'capabilities:node': 'controller-%index%'
+#  CephStorageSchedulerHints:
+#    'capabilities:node': 'cephstorage-%index%'
+#  R630ComputeSchedulerHints:
+#    'capabilities:node': 'compute-r630-%index%'
+#  R220ComputeSchedulerHints:
+#    'capabilities:node': 'compute-r220-%index%'
+
+
+#  ControllerSchedulerHints:
+#    'capabilities:node': 'controller-%index%'
+#  CephStorageSchedulerHints:
+#    'capabilities:node': 'ceph-storage-%index%'
+#  R630ComputeSchedulerHints:
+#    'capabilities:node': 'R630compute-%index%'
+#  R220ComputeSchedulerHints:
+#    'capabilities:node': 'R220compute-%index%'
 
   HostnameMap:
     controller-0: controller-0
