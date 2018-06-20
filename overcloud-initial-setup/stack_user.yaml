@@ -48,12 +48,6 @@ resources:
         port_range_min: 5000
         port_range_max: 5000
 
-  tenant_key:
-    type: OS::Nova::KeyPair
-    properties:
-      name: { get_param: tenant_key_name }
-      save_private_key: false
-
   server1:
     type: OS::Nova::Server
     properties:
