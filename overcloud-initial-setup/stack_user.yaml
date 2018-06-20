@@ -58,7 +58,7 @@ resources:
     type: OS::Nova::Server
     properties:
       name: { get_param: tenant_server1_name }
-      image: cirros-0.3.4-x86_64
+      image: cirros-0.4.0-x86_64
       flavor: m1.tiny
       key_name:  { get_resource: tenant_key }
       networks:
@@ -97,13 +97,13 @@ resources:
       name: server2_boot_volume
       description: "Server 2 boot volume"
       size: 10
-      image: cirros-0.3.4-x86_64
+      image: cirros-0.4.0-x86_64
 
   server2:
     type: OS::Nova::Server
     properties:
       name: { get_param: tenant_server2_name }
-      image: cirros-0.3.4-x86_64
+      image: cirros-0.4.0-x86_64
       flavor: m1.tiny
       key_name:  { get_resource: tenant_key }
       networks:
