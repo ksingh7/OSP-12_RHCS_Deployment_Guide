@@ -69,18 +69,18 @@ parameters:
     default: 192.168.1.100
 
 resources:
-  #glance_image_upload:
-  #  type: OS::Glance::Image
-  #  properties:
-  #    architecture: x86_64
-  #    container_format: bare
-  #    disk_format: qcow2
-  #    location: http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img
-  #    name: cirros-0.3.4-x86_64
-  #    os_distro: CirrOS
-  #    owner: admin
-  #    protected: False
-  #    is_public: True
+  glance_image_upload:
+    type: OS::Glance::Image
+    properties:
+      architecture: x86_64
+      container_format: bare
+      disk_format: qcow2
+      location: http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img
+      name: cirros-0.3.4-x86_64
+      os_distro: CirrOS
+      owner: admin
+      protected: False
+      is_public: True
 
   instance_flavor:
     type: OS::Nova::Flavor
