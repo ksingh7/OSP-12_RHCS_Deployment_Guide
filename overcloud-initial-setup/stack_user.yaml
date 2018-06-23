@@ -3,7 +3,7 @@ heat_template_version: 2016-10-14
 description: This template will create two servers and assign  a floating IP address to each of them.
 
 parameters:
-  tenant_key_name:
+  tenant_key:
     type: string
     description: ssh key required for server creation
     default: 'stack'
@@ -54,7 +54,7 @@ resources:
       name: { get_param: tenant_server1_name }
       image: cirros-0.4.0-x86_64
       flavor: m1.tiny
-      key_name:  { get_resource: tenant_key }
+      key_name:  { get_param: tenant_key }
       networks:
         - port: { get_resource: server1_port }
 
@@ -99,7 +99,7 @@ resources:
       name: { get_param: tenant_server2_name }
       image: cirros-0.4.0-x86_64
       flavor: m1.tiny
-      key_name:  { get_resource: tenant_key }
+      key_name:  { get_param: tenant_key }
       networks:
         - port: { get_resource: server2_port }
       block_device_mapping:

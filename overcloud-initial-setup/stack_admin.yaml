@@ -22,19 +22,19 @@ parameters:
   provider_net_cidr:
     type: string
     description: CIDR for the provider(external) network
-    default: 192.168.122.0/24
+    default: 192.168.120.0/24
   provider_net_gateway:
     type: string
     description: GW for the external network
-    default: 192.168.122.1
+    default: 192.168.120.1
   provider_net_pool_start:
     type: string 
     description: start of the IP pool for the external network
-    default: 192.168.122.151
+    default: 192.168.120.151
   provider_net_pool_end:
     type: string
     description: end of the IP pool for the external network
-    default: 192.168.122.200
+    default: 192.168.120.200
   tenant_net_name:
     type: string
     description: Name of the tenant network.
@@ -142,7 +142,7 @@ resources:
       name: { get_param: tenant_subnet_name }
       network_id: { get_resource: tenant_net }
       cidr: { get_param: tenant_net_cidr }
-      dns_nameservers: [ "192.168.122.1" ]
+      dns_nameservers: [ "192.168.120.1" ]
       gateway_ip: { get_param: tenant_net_gateway }
       allocation_pools:
         - start: { get_param: tenant_net_pool_start }
