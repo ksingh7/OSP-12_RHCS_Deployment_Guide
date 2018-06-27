@@ -35,13 +35,14 @@ key_private: |
   gN01Z17ul0w0gyb9VF4soXiwquRy8Pq1ZsWV0P4wjaG6AuqKb1AfAsD6zjy+vnXA
   h6Nu7eeKuyhZ3sFtZfOOBtPJdbr8T/kzjQnMmdb56T8Y6vzzE0V3TyQ=
   -----END RSA PRIVATE KEY-----
-key_public: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDB8WYE3a3SEWthbwwMGyPlR4M0elHs+yAN0pxfYaSRaq+K9BLPjOZankKWu+Uyf3CgkRdXkHOknZyib9HOpBSU3OCzXzcsaqN76bATDlR2+j/odpN2lq9YWXsbUN4FCWhZTbtdxQSJi3s+FoER6WEOiXOnbPkB8fTnH4s5s6k/o/+g72Jv6mByvO1ZE/vmzKct3V1kFojHfYwfsDor338kPgnZVfcEH5/xJwGxhlrGLzLcByFV/mE58c9YlWU7HBQhGd2/oZ/GNnWiVKv75jy0MMyk2W4bqQCCjpzpWN4QiG8H65VNweYiZy4wjpkZ939Cot1d0ctAkYghy8D2YSD3 root@server1"
+key_public: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDB8WYE3a3SEWthbwwMGyPlR4M0elHs+yAN0pxfYaSRaq+K9BLPjOZankKWu+Uyf3CgkRdXkHOknZyib9HOpBSU3OCzXzcsaqN76bATDlR2+j/odpN2lq9YWXsbUN4FCWhZTbtdxQSJi3s+FoER6WEOiXOnbPkB8fTnH4s5s6k/o/+g72Jv6mByvO1ZE/vmzKct3V1kFojHfYwfsDor338kPgnZVfcEH5/xJwGxhlrGLzLcByFV/mE58c9YlWU7HBQhGd2/oZ/GNnWiVKv75jy0MMyk2W4bqQCCjpzpWN4QiG8H65VNweYiZy4wjpkZ939Cot1d0ctAkYghy8D2YSD3 root@admin-node"
 
 ## Block Device ##
 
 block_dev_name: /dev/vdb
-mount_point: /var/lib/mysql
+mount_point: /mnt/rbd
 force: "yes"
+mysql_datadir: "{{ mount_point }}"
 
 ## Subscription Manager ##
 

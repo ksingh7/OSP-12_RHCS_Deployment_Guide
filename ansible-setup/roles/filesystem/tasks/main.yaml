@@ -1,4 +1,9 @@
 ---
+- name: Create mount directory if it does not exist
+  file:
+    path: "{{ mount_point }}"
+    state: directory
+    
 - name: Create filesystem
   filesystem:
     fstype: xfs
