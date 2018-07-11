@@ -29,6 +29,8 @@ parameter_defaults:
       - /dev/nvme0n1
       - /dev/nvme0n1
       - /dev/nvme0n1
+      - /dev/nvme0n1
+      - /dev/nvme0n1
                               
   CephPoolDefaultPgNum: 32
 
