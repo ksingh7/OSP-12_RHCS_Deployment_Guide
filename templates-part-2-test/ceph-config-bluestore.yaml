@@ -31,17 +31,13 @@ parameter_defaults:
       - /dev/nvme0n1
       - /dev/nvme0n1
       - /dev/nvme0n1
-                              
-  CephPoolDefaultPgNum: 32
-
+                            
   CephAnsibleExtraConfig:
-    rgw_override_bucket_index_max_shards: 10
     osd_pool_default_pg_num: 32
     osd_pool_default_pgp_num: 32
     osd_recovery_max_active: 1
     osd_max_backfills: 1
     osd_recovery_op_priority: 1
-    osd_journal_size: 10240
     mon_osd_full_ratio: 90
     max_open_files: 131072
     osd_objectstore: bluestore
@@ -52,11 +48,6 @@ parameter_defaults:
         port: 6800
         proto: tcp
         action: accept
-
-#  CephPools:
-#    - name: vms
-#      pg_num: 1024
-#      pgp_num: 1024
 
   CephAnsiblePlaybookVerbosity: 1
 
